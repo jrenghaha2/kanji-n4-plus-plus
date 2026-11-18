@@ -1,0 +1,1573 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https:; media-src 'self' https: data: blob:;">
+<meta name="theme-color" content="#6366f1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="./manifest.json">
+<title>N4 Kanji — Flashcard & Kuis ABC</title>
+<style>
+:root {
+  --bg-grad: linear-gradient(135deg, #f3f6f9 0%, #e2e8f0 100%);
+  --surface: rgba(255, 255, 255, 0.95);
+  --surface-solid: #ffffff;
+  --surface2: #f1f5f9;
+  --text: #0f172a;
+  --muted: #64748b;
+  --accent: #6366f1;
+  --accent-hover: #4f46e5;
+  --accent-soft: #e0e7ff;
+  --green: #10b981;
+  --green-soft: #d1fae5;
+  --blue: #3b82f6;
+  --blue-soft: #dbeafe;
+  --orange: #f59e0b;
+  --orange-soft: #fef3c7;
+  --red: #f43f5e;
+  --red-soft: #ffe4e6;
+  --radius: 20px;
+  --shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.04);
+  --shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.04);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body {
+  background: var(--bg-grad); color: var(--text); min-height: 100vh; display: flex; justify-content: center;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Hiragino Sans", "Noto Sans JP", sans-serif;
+}
+.phone { width: 100%; max-width: 480px; min-height: 100vh; padding: 0 16px 40px; position: relative; }
+.appbar {
+  position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 10px; padding: 16px 0;
+  background: rgba(243, 246, 249, 0.78); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(255,255,255,0.4); margin: 0 -16px; padding-left: 16px; padding-right: 16px;
+}
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 19px; flex: 1; letter-spacing: -0.3px; }
+.logo { display: inline-flex; width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), var(--blue)); color: #fff; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; box-shadow: 0 4px 10px rgba(99, 102, 241, 0.3); }
+.pill { background: var(--surface-solid); border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 700; box-shadow: var(--shadow-sm); color: var(--muted); border: 1px solid rgba(0,0,0,0.03); }
+.pill b { color: var(--green); }
+.seg { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; background: rgba(0,0,0,0.04); padding: 6px; border-radius: 14px; margin-top: 12px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02); }
+.seg button { border: 0; background: transparent; padding: 10px 4px; border-radius: 10px; font-size: 14px; font-weight: 700; color: var(--muted); cursor: pointer; font-family: inherit; transition: all 0.25s ease; }
+.seg button.active { background: var(--surface-solid); color: var(--accent); box-shadow: var(--shadow-sm); transform: scale(1.02); }
+.chips { display: flex; gap: 10px; overflow-x: auto; padding: 16px 2px 4px; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chip { border: 1px solid rgba(0,0,0,0.05); background: var(--surface-solid); box-shadow: var(--shadow-sm); border-radius: 999px; padding: 10px 16px; font-size: 14px; font-weight: 700; color: var(--muted); cursor: pointer; font-family: inherit; white-space: nowrap; display: inline-flex; gap: 8px; align-items: center; transition: all 0.2s ease; }
+.chip:active { transform: scale(0.95); }
+.chip .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.chip .cnt { font-weight: 700; font-size: 12px; opacity: 0.65; background: var(--surface2); padding: 2px 8px; border-radius: 9px; margin-left: 2px; }
+.chip.active { background: var(--text); color: #fff; border-color: var(--text); box-shadow: 0 4px 12px rgba(15, 23, 42, 0.2); }
+.chip.active .cnt { background: rgba(255,255,255,0.2); color: #fff; }
+.lvl-desc { font-size: 13px; color: var(--muted); margin-top: 10px; padding: 0 4px; line-height: 1.6; }
+.lv-easy { background: var(--green-soft); color: #047857; }
+.lv-medium { background: var(--orange-soft); color: #b45309; }
+.lv-hard { background: var(--red-soft); color: #be123c; }
+.row { display: flex; align-items: center; gap: 10px; }
+.between { justify-content: space-between; }
+.mt8 { margin-top: 8px; } .mt12 { margin-top: 12px; } .mt16 { margin-top: 16px; }
+.small { font-size: 13px; } .muted { color: var(--muted); }
+section:not([hidden]) { animation: slideUpFade 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+@keyframes slideUpFade { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+.bar { height: 10px; border-radius: 99px; background: rgba(0,0,0,0.06); overflow: hidden; box-shadow: inset 0 1px 3px rgba(0,0,0,0.1); }
+.bar i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), #818cf8); border-radius: 99px; transition: width 0.35s ease; }
+.card { background: var(--surface-solid); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); border: 1px solid rgba(255,255,255,0.8); }
+.btn { border: 0; border-radius: 14px; padding: 15px 16px; font-size: 15px; font-weight: 800; cursor: pointer; font-family: inherit; transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1); position: relative; overflow: hidden; }
+.btn:active:not([disabled]) { transform: scale(0.94); }
+.btn[disabled] { opacity: 0.45; cursor: not-allowed; filter: grayscale(1); }
+.btn-green { background: linear-gradient(135deg, var(--green), #059669); color: #fff; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25); }
+.btn-orange { background: linear-gradient(135deg, var(--orange), #d97706); color: #fff; box-shadow: 0 4px 12px rgba(245, 158, 11, 0.25); }
+.btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent-hover)); color: #fff; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25); }
+.btn-secondary { background: var(--surface-solid); color: var(--text); border: 1px solid rgba(0,0,0,0.08); box-shadow: var(--shadow-sm); }
+.btn-block { width: 100%; }
+.toggle-btn { border: 1px solid rgba(0,0,0,0.04); background: var(--surface-solid); box-shadow: var(--shadow-sm); border-radius: 12px; padding: 10px 14px; font-size: 13.5px; font-weight: 700; color: var(--muted); cursor: pointer; font-family: inherit; transition: all 0.2s; }
+.toggle-btn:active:not([disabled]) { transform: scale(0.95); }
+.toggle-btn.on { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
+.toggle-btn[disabled] { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+.flash-wrap { perspective: 1200px; margin-top: 20px; }
+.flashcard { position: relative; width: 100%; height: 350px; transform-style: preserve-3d; transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); cursor: pointer; }
+.flashcard.flip { transform: rotateY(180deg); }
+.face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; background: linear-gradient(145deg, #ffffff, #f8fafc); border-radius: 24px; box-shadow: 0 15px 35px -10px rgba(15, 23, 42, 0.15), inset 0 0 0 1px rgba(255,255,255,1); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center; overflow: auto; }
+.face.back { transform: rotateY(180deg); justify-content: flex-start; padding-top: 40px; }
+.kanji-big { font-size: 96px; font-weight: 800; line-height: 1.1; background: linear-gradient(180deg, var(--text), #334155); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.hint { margin-top: 24px; font-size: 13px; font-weight: 600; color: #94a3b8; background: var(--surface2); padding: 6px 14px; border-radius: 99px; }
+.reading { font-size: 32px; font-weight: 800; color: var(--accent); letter-spacing: 1px; }
+.meaning { font-size: 20px; font-weight: 700; margin-top: 8px; color: var(--text); }
+.lvl { display: inline-block; font-size: 12px; font-weight: 800; padding: 4px 12px; border-radius: 999px; margin-top: 16px; text-transform: uppercase; letter-spacing: 0.5px; }
+.example { margin-top: 20px; font-size: 16px; line-height: 1.6; background: rgba(0,0,0,0.03); padding: 16px; border-radius: 16px; width: 100%; border-left: 4px solid var(--accent); text-align: left; }
+.example-id { font-size: 14px; color: var(--muted); margin-top: 10px; line-height: 1.5; font-weight: 500; }
+.fc-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px; }
+.fc-nav-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; grid-column: 1 / -1; }
+.done { text-align: center; padding: 32px 20px; background: linear-gradient(135deg, #ffffff, #fdfbfb); }
+.done .big { font-size: 52px; display: inline-block; }
+.section { font-size: 20px; font-weight: 800; letter-spacing: -0.5px; }
+.search { width: 100%; border: 1px solid rgba(0,0,0,0.05); background: var(--surface-solid); box-shadow: var(--shadow-sm); border-radius: 16px; padding: 16px; font-size: 16px; font-family: inherit; outline: none; font-weight: 600; }
+.search:focus { box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow); border-color: var(--accent); }
+.list { display: flex; flex-direction: column; gap: 12px; }
+.item { background: var(--surface-solid); border-radius: 16px; padding: 14px 16px; box-shadow: var(--shadow-sm); cursor: pointer; border: 1px solid rgba(0,0,0,0.03); transition: all 0.2s ease; }
+.item:hover { box-shadow: var(--shadow); transform: translateY(-2px); }
+.item .top { display: flex; align-items: center; gap: 14px; }
+.item .k { font-size: 28px; font-weight: 800; min-width: 56px; text-align: center; color: var(--text); }
+.item .info { flex: 1; min-width: 0; }
+.item .info b { display: block; font-size: 16px; font-weight: 800; margin-bottom: 2px; }
+.item .info span { font-size: 14px; color: var(--muted); font-weight: 500; }
+.item .tags { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+.tag { font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 6px; background: var(--surface2); color: var(--muted); white-space: nowrap; text-transform: uppercase; letter-spacing: 0.5px; }
+.tag.green { background: var(--green-soft); color: #047857; }
+.item .ex { display: none; margin-top: 12px; padding-top: 12px; border-top: 1px dashed rgba(0,0,0,0.1); font-size: 15px; line-height: 1.6; font-weight: 500; }
+.item.open .ex { display: block; }
+.item .ex .id { color: var(--muted); font-size: 14px; margin-top: 6px; }
+.empty { text-align: center; color: var(--muted); padding: 40px 0; font-size: 15px; font-weight: 600; }
+.footer-note { text-align: center; color: #94a3b8; font-size: 12px; margin-top: 32px; line-height: 1.6; font-weight: 500; }
+
+/* ===== Kuis ===== */
+.quiz-counts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.quiz-counts .btn { padding: 13px 10px; font-size: 14px; }
+.quiz-custom-row { display: flex; gap: 8px; margin-top: 10px; }
+.quiz-custom-input {
+  flex: 1; border: 1.5px solid rgba(0,0,0,0.08); background: var(--surface2); border-radius: 14px;
+  padding: 12px 14px; font-size: 14.5px; font-weight: 700; font-family: inherit; color: var(--text); outline: none;
+}
+.quiz-custom-input:focus { background: var(--surface-solid); border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.quiz-card { text-align: center; padding: 30px 16px; background: linear-gradient(145deg, #ffffff, #f8fafc); border-radius: 24px; border: 1px solid rgba(255,255,255,1); }
+.quiz-main { font-size: 64px; font-weight: 800; line-height: 1.2; margin-top: 10px; color: var(--text); }
+.quiz-main.reading { font-size: 42px; color: var(--accent); }
+.quiz-main.meaning-prompt { font-size: 28px; color: var(--text); line-height: 1.35; padding: 6px 10px; }
+.quiz-main.sentence-prompt { font-size: 23px; color: var(--text); line-height: 1.55; padding: 6px 10px; font-weight: 700; }
+.quiz-sub { font-size: 15px; margin-top: 10px; font-weight: 600; }
+.quiz-options { display: grid; gap: 12px; }
+.quiz-options.two { grid-template-columns: 1fr 1fr; }
+.opt {
+  border: 2px solid rgba(0,0,0,0.05); background: var(--surface-solid); box-shadow: var(--shadow-sm);
+  border-radius: 16px; padding: 16px 14px; font-size: 17px; font-weight: 800; cursor: pointer;
+  font-family: inherit; text-align: left; transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  color: var(--text); display: flex; align-items: center; gap: 12px;
+}
+.quiz-options:not(.two) .opt { font-size: 15.5px; font-weight: 700; line-height: 1.45; padding: 15px 18px; }
+.opt .abc-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 34px; height: 34px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); font-size: 15px; font-weight: 900; flex-shrink: 0; }
+.opt .abc-text { flex: 1; word-break: break-word; }
+.opt.correct .abc-badge { background: var(--green); color: #fff; }
+.opt.wrong .abc-badge { background: var(--red); color: #fff; }
+.opt.dim .abc-badge { opacity: 0.4; }
+.quiz-options.two .opt { flex-direction: column; text-align: center; gap: 8px; padding: 16px 12px; }
+.quiz-options.two .opt .abc-badge { min-width: 30px; height: 30px; font-size: 13.5px; border-radius: 8px; }
+.quiz-type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.quiz-type-btn { border: 2px solid rgba(0,0,0,0.05); background: var(--surface-solid); box-shadow: var(--shadow-sm); border-radius: 14px; padding: 11px 12px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit; text-align: left; transition: all 0.2s; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.quiz-type-btn:hover { border-color: var(--accent-soft); transform: translateY(-1px); box-shadow: var(--shadow); }
+.quiz-type-btn.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.quiz-type-btn .qt-icon { font-size: 16px; flex-shrink: 0; }
+.quiz-type-btn.full-width { grid-column: 1 / -1; }
+.opt:not(:disabled):hover { border-color: var(--accent-soft); transform: translateY(-2px); box-shadow: var(--shadow); color: var(--accent); }
+.opt:disabled { cursor: default; }
+.opt.correct { background: var(--green-soft); border-color: var(--green); color: #047857; animation: popCorrect 0.45s ease forwards; }
+.opt.wrong { background: var(--red-soft); border-color: var(--red); color: #be123c; animation: shakeWrong 0.35s ease forwards; }
+.opt.dim { opacity: 0.4; transform: scale(0.98); }
+@keyframes popCorrect { 0% { transform: scale(1); } 50% { transform: scale(1.04); } 100% { transform: scale(1); } }
+@keyframes shakeWrong { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+.quiz-review { display: flex; flex-direction: column; gap: 10px; max-height: 460px; overflow-y: auto; padding-right: 4px; }
+.qr-item { background: rgba(0,0,0,0.03); border-radius: 14px; padding: 14px 16px; font-size: 14.5px; line-height: 1.6; border-left: 4px solid transparent; font-weight: 500; }
+.qr-item:has(.you) { border-left-color: var(--red); }
+.qr-item:not(:has(.you)) { border-left-color: var(--green); }
+.qr-item b.k { font-size: 20px; font-weight: 800; }
+.qr-item .you { color: var(--red); font-weight: 800; background: var(--red-soft); padding: 2px 6px; border-radius: 6px; }
+.qr-item .right { color: var(--green); font-weight: 800; background: var(--green-soft); padding: 2px 6px; border-radius: 6px; }
+.qr-mode { display: inline-block; font-size: 11px; font-weight: 800; background: var(--accent-soft); color: var(--accent); padding: 2px 8px; border-radius: 6px; margin-left: 4px; }
+.score-num { font-size: 56px; font-weight: 800; background: linear-gradient(135deg, var(--accent), var(--blue)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.quiz-finish-early { border: 1px solid rgba(0,0,0,0.08); background: var(--surface-solid); color: var(--muted); border-radius: 10px; padding: 5px 10px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; }
+.quiz-finish-early:hover { color: var(--red); border-color: var(--red-soft); background: var(--red-soft); }
+#panelCard .row.between{flex-wrap:wrap;row-gap:8px}
+#panelCard .row.between .toggle-btn{white-space:nowrap}
+#panelCard .row.between > .row{flex-wrap:wrap}
+#fcActions .btn{padding-left:6px;padding-right:6px}
+@media (max-width:400px){ #fcActions .btn{font-size:13px} #panelCard .row.between .toggle-btn{font-size:12.5px;padding:9px 10px} }
+
+/* ================= DESKTOP ================= */
+.kbd-hint{display:none}
+.sidebar{display:contents}
+@media (min-width:900px){
+  body{align-items:flex-start}
+  .phone{max-width:1480px;min-height:100vh;padding:0 48px 28px;display:grid;
+    grid-template-columns:300px minmax(0,1fr);grid-template-rows:auto 1fr auto;column-gap:44px;align-content:start}
+  html,body{overflow-x:clip}
+  .appbar{grid-column:1/-1;margin:0 -48px;padding:16px 48px;background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;border-bottom:0}
+  .appbar::before{content:'';position:absolute;z-index:-1;top:0;bottom:0;left:50%;width:100vw;margin-left:-50vw;
+    background:rgba(243,246,249,.78);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid rgba(255,255,255,.5)}
+  .brand{font-size:22px}
+  .logo{width:40px;height:40px;font-size:22px;border-radius:12px}
+  .pill{font-size:15px;padding:8px 18px}
+  .sidebar{display:block;grid-column:1;grid-row:2;position:sticky;top:92px;align-self:start;margin-top:24px}
+  .seg{grid-template-columns:1fr;margin-top:0;padding:6px}
+  .seg button{text-align:left;padding:13px 16px;font-size:15px}
+  .seg button:not(.active):hover{background:rgba(255,255,255,.6);color:var(--text)}
+  .chips{flex-direction:column;overflow:visible;padding:22px 0 0;gap:8px}
+  .chip{width:100%;justify-content:flex-start;padding:12px 16px;font-size:14.5px}
+  .chip .cnt{margin-left:auto}
+  .lvl-desc{font-size:13.5px;margin-top:16px;padding:14px 16px;background:rgba(255,255,255,.55);border-radius:14px;border:1px solid rgba(255,255,255,.8)}
+  #panelCard,#panelList,#panelQuiz{grid-column:2;grid-row:2;margin-top:24px;min-width:0}
+  .footer-note{grid-column:1/-1;grid-row:3;margin-top:24px}
+  #panelCard:not([hidden]){display:grid;grid-template-columns:minmax(0,1fr) 340px;column-gap:32px;row-gap:14px;
+    grid-template-rows:auto auto auto auto auto auto 1fr auto;align-content:start}
+  #panelCard > *{margin-top:0 !important}
+  #panelCard > .row.between{grid-column:1/-1;grid-row:1;flex-wrap:nowrap}
+  #panelCard > .row.between .toggle-btn{font-size:14px;padding:10px 16px}
+  #panelCard > .bar{grid-column:1/-1;grid-row:2}
+  #panelCard > .flash-wrap{grid-column:1;grid-row:3 / 8}
+  #btnHardMode{grid-column:2;grid-row:3;padding:13px 14px !important;font-size:14.5px}
+  #fcActions{grid-column:2;grid-row:4;grid-template-columns:1fr !important;gap:10px !important}
+  #fcActions .btn{padding:17px 14px;font-size:16px}
+  #fcRow2{grid-column:2;grid-row:5;gap:10px !important}
+  #fcRow3{grid-column:2;grid-row:6;gap:10px !important}
+  #panelCard > .kbd-hint{display:block;grid-column:1/-1;grid-row:8;text-align:center;font-size:12.5px;color:var(--muted);line-height:1.9;font-weight:600}
+  #panelCard > .done{grid-column:1/-1;grid-row:3 / 8}
+  .flashcard{height:clamp(420px,calc(100vh - 300px),760px)}
+  .kanji-big{font-size:clamp(76px,min(16vh,9vw),190px);white-space:nowrap}
+  .face{padding:36px 48px}
+  .face.back{padding-top:48px}
+  .reading{font-size:clamp(38px,5vh,52px)}
+  .meaning{font-size:clamp(22px,3vh,30px);margin-top:10px}
+  .example{font-size:clamp(18px,2.4vh,22px);padding:20px 24px;max-width:760px}
+  .example-id{font-size:16px}
+  #panelList .search{font-size:17px;padding:18px 20px;max-width:640px}
+  .list{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px;align-items:start}
+  .item .k{font-size:32px}
+  #quizSetup{max-width:780px;margin-left:auto;margin-right:auto;padding:28px 32px}
+  #quizRun{max-width:900px;margin-left:auto;margin-right:auto}
+  .quiz-card{padding:44px 24px}
+  .quiz-main{font-size:clamp(80px,13vh,130px)}
+  .quiz-main.reading{font-size:clamp(52px,8vh,72px)}
+  .quiz-main.meaning-prompt{font-size:clamp(30px,4.5vh,42px)}
+  .quiz-main.sentence-prompt{font-size:clamp(24px,3.5vh,32px)}
+  .quiz-sub{font-size:18px}
+  .quiz-options:not(.two){grid-template-columns:1fr 1fr}
+  .opt{padding:20px 18px}
+  #quizRun .kbd-hint{display:block;text-align:center;margin-top:14px;font-size:12.5px;color:var(--muted);font-weight:600}
+  #quizResult{max-width:1000px;margin-left:auto;margin-right:auto;display:grid;grid-template-columns:1fr 1fr;column-gap:20px;align-items:start}
+  #quizResult:not([hidden]) > *{margin-top:16px}
+  #quizResult > .card.done,#quizResult > #btnQuizAgain{grid-column:1/-1}
+  #quizResult[hidden]{display:none}
+  .kbd-hint kbd{display:inline-block;min-width:22px;padding:1px 7px;margin:0 2px;border-radius:6px;background:var(--surface-solid);border:1px solid rgba(0,0,0,.12);box-shadow:0 1px 0 rgba(0,0,0,.1);font:inherit;font-size:12px;text-align:center;color:var(--text)}
+}
+@media (min-width:900px) and (max-width:1199px){
+  .phone{padding:0 28px 24px;grid-template-columns:210px minmax(0,1fr);column-gap:26px}
+  .appbar{margin:0 -28px;padding:14px 28px}
+  #panelCard:not([hidden]){grid-template-columns:minmax(0,1fr) 270px;column-gap:20px}
+}
+.appbar-actions { display: flex; align-items: center; gap: 6px; }
+.icon-pill-btn {
+  border: 1px solid rgba(0,0,0,0.05); background: var(--surface-solid); box-shadow: var(--shadow-sm);
+  border-radius: 999px; padding: 6px 11px; font-size: 12.5px; font-weight: 700; color: var(--muted);
+  cursor: pointer; font-family: inherit; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
+}
+.icon-pill-btn:hover { color: var(--accent); border-color: var(--accent-soft); }
+.tts-card-btn {
+  position: absolute; top: 16px; right: 16px; z-index: 5; border: 1px solid rgba(99, 102, 241, 0.18);
+  background: var(--surface-solid); color: var(--accent); box-shadow: var(--shadow-sm); border-radius: 999px;
+  padding: 8px 14px; font-size: 13px; font-weight: 800; cursor: pointer; font-family: inherit; display: inline-flex; align-items: center; gap: 6px;
+}
+.tts-inline-btn {
+  border: 0; background: var(--accent-soft); color: var(--accent); border-radius: 8px; padding: 4px 9px;
+  font-size: 12px; font-weight: 800; cursor: pointer; font-family: inherit; display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; vertical-align: middle;
+}
+@media (max-width: 440px) { .icon-pill-btn span.lbl-txt { display: none; } .icon-pill-btn { padding: 6px 9px; } }
+
+/* ================= MODAL RESTORE KONFIRMASI ================= */
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+  animation: fadeInModal 0.2s ease forwards;
+}
+.modal-backdrop[hidden] { display: none; }
+@keyframes fadeInModal { from { opacity: 0; } to { opacity: 1; } }
+.modal-box {
+  width: 100%; max-width: 440px;
+  background: var(--surface-solid);
+  border-radius: 24px;
+  padding: 24px;
+  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.28);
+  border: 1px solid rgba(255,255,255,0.9);
+  animation: popModal 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes popModal { from { opacity: 0; transform: scale(0.94) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+.modal-title { font-size: 19px; font-weight: 800; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.modal-sub { font-size: 13.5px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+.restore-compare {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px;
+}
+.rc-card {
+  background: var(--surface2); border-radius: 14px; padding: 12px 14px;
+  border: 1px solid rgba(0,0,0,0.04);
+}
+.rc-card.backup { background: var(--accent-soft); border-color: rgba(99, 102, 241, 0.2); }
+.rc-label { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+.rc-card.backup .rc-label { color: var(--accent); }
+.rc-val { font-size: 15px; font-weight: 800; color: var(--text); margin-top: 4px; line-height: 1.4; }
+.rc-meta { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+.restore-actions { display: flex; flex-direction: column; gap: 9px; margin-top: 18px; }
+.restore-choice {
+  width: 100%; border: 2px solid transparent; border-radius: 15px; padding: 13px 15px;
+  text-align: left; cursor: pointer; font-family: inherit; transition: all 0.2s ease;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.restore-choice:active { transform: scale(0.98); }
+.restore-choice.merge {
+  background: linear-gradient(135deg, var(--green), #059669); color: #fff;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+}
+.restore-choice.merge:hover { filter: brightness(1.04); }
+.restore-choice.replace {
+  background: var(--surface-solid); color: var(--text); border-color: rgba(244, 63, 94, 0.35);
+}
+.restore-choice.replace:hover { background: var(--red-soft); border-color: var(--red); }
+.restore-choice .rc-btn-title { font-size: 14.5px; font-weight: 800; display: flex; align-items: center; justify-content: space-between; }
+.restore-choice .rc-btn-desc { font-size: 12.5px; opacity: 0.9; font-weight: 500; }
+.restore-choice.replace .rc-btn-desc { color: var(--muted); }
+.restore-cancel {
+  width: 100%; border: 0; background: transparent; color: var(--muted); font-size: 13.5px;
+  font-weight: 700; padding: 10px; cursor: pointer; font-family: inherit; border-radius: 12px;
+}
+.restore-cancel:hover { background: var(--surface2); color: var(--text); }
+.restore-choice:focus-visible, .restore-cancel:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+.rc-warn {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--orange-soft);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #92400e;
+  font-size: 12.5px;
+  line-height: 1.5;
+  font-weight: 600;
+}
+.rc-warn[hidden] { display: none; }
+.rc-warn.danger {
+  background: var(--red-soft);
+  border-color: rgba(244, 63, 94, 0.4);
+  color: #9f1239;
+}
+.rc-warn.info {
+  background: var(--blue-soft);
+  border-color: rgba(59, 130, 246, 0.35);
+  color: #1e40af;
+}
+
+</style>
+</head>
+<body>
+<div class="phone">
+  <header class="appbar">
+    <div class="brand"><span class="logo">日</span> N4 Kanji</div>
+    <div class="appbar-actions">
+      <button type="button" class="icon-pill-btn" id="btnExportData" title="Backup progres (.json)">💾 <span class="lbl-txt">Backup</span></button>
+      <button type="button" class="icon-pill-btn" id="btnImportData" title="Restore progres (.json)">📂 <span class="lbl-txt">Restore</span></button>
+      <input type="file" id="fileImportData" accept=".json,application/json" hidden>
+      <span class="pill">✓ <b id="mCount">0</b>/<span id="mTotal">0</span> hafal</span>
+    </div>
+  </header>
+
+  <div class="sidebar">
+    <div class="seg" role="tablist" aria-label="Tampilan">
+      <button id="tabCard" class="active" role="tab">🃏 Kartu</button>
+      <button id="tabList" role="tab">📋 Daftar</button>
+      <button id="tabQuiz" role="tab">❓ Kuis</button>
+    </div>
+    <div class="chips" id="levelChips" role="tablist" aria-label="Level kesulitan"></div>
+    <p class="lvl-desc" id="levelDesc"></p>
+  </div>
+
+  <!-- ====== KARTU ====== -->
+  <section id="panelCard">
+    <div class="row between mt12">
+      <span class="small muted" id="cardCounter" style="font-weight:700">Kartu 1</span>
+      <div class="row" style="gap:8px">
+        <button class="toggle-btn" id="btnHideMastered">🙈 Sembunyikan hafal: mati</button>
+        <button class="toggle-btn" id="btnShuffle">🔀 Acak: mati</button>
+      </div>
+    </div>
+    <div class="bar mt12"><i id="cardBar"></i></div>
+    <button class="toggle-btn mt12" id="btnHardMode" style="width:100%; border: 1px dashed rgba(0,0,0,0.2);">⚠ Kartu sulit (0)</button>
+
+    <div class="flash-wrap" id="flashWrap">
+      <div class="flashcard" id="flashcard" role="button" tabindex="0" aria-label="Kartu kanji, ketuk untuk membalik">
+        <div class="face front">
+          <button type="button" class="tts-card-btn" id="btnSpeakFront" title="Dengarkan pelafalan (A)">🔊 Suara</button>
+          <div class="kanji-big" id="cardKanji">漢字</div>
+          <div class="hint">Ketuk kartu untuk membalik</div>
+        </div>
+        <div class="face back">
+          <button type="button" class="tts-card-btn" id="btnSpeakBack" title="Dengarkan pelafalan (A)">🔊 Kata</button>
+          <div class="reading" id="cardReading"></div>
+          <div class="meaning" id="cardMeaning"></div>
+          <span class="lvl" id="cardLevel">Easy</span>
+          <div class="example"><span id="cardExample"></span> <button type="button" class="tts-inline-btn" id="btnSpeakEx">🔊 Kalimat</button></div>
+          <div class="example-id" id="cardExampleId"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="fc-actions" id="fcActions" style="grid-template-columns:1fr 1fr; gap: 8px;">
+      <div class="fc-nav-pair">
+        <button class="btn btn-secondary" id="btnPrev">← Sebelumnya</button>
+        <button class="btn btn-primary" id="btnUlangi">Selanjutnya →</button>
+      </div>
+      <button class="btn btn-orange" id="btnSulit">⚠ Sulit</button>
+      <button class="btn btn-green" id="btnHafal">✓ Hafal</button>
+    </div>
+
+    <div class="fc-actions" id="fcRow2" style="gap: 8px;">
+      <button class="toggle-btn" id="btnForget">🧠 Lupa kanji ini</button>
+      <button class="toggle-btn" id="btnResetAll" style="color:var(--red);">🗑 Lupakan semua hafalan</button>
+    </div>
+
+    <div class="fc-actions" id="fcRow3" style="gap: 8px;">
+      <button class="toggle-btn" id="btnUnhard">✖ Hapus dari sulit</button>
+      <button class="toggle-btn" id="btnClearHard" style="color:var(--red);">🗑 Hapus semua sulit</button>
+    </div>
+
+    <p class="kbd-hint" id="kbdHintCard">⌨ Pintasan: <kbd>Spasi</kbd> balik · <kbd>←</kbd> prev · <kbd>→</kbd> next · <kbd>S</kbd> sulit · <kbd>H</kbd> hafal · <kbd>A</kbd> suara</p>
+
+    <div class="card done mt16" id="fcDone" hidden>
+      <div class="big">🎉</div>
+      <h2 class="section mt8">Sesi selesai!</h2>
+      <p class="muted small mt8" id="doneSummary" style="font-weight:600; font-size: 14px;"></p>
+      <button class="btn btn-orange btn-block mt16" id="btnHardOnly" hidden>↺ Ulangi kartu sulit (<span id="hardCount">0</span>)</button>
+      <button class="btn btn-primary btn-block mt12" id="btnRestart">Mulai sesi baru</button>
+    </div>
+  </section>
+
+  <!-- ====== DAFTAR ====== -->
+  <section id="panelList" hidden>
+    <p class="small muted mt12" style="font-weight:600">Ketuk baris untuk contoh kalimat. Data tersimpan di perangkat.</p>
+    <input type="search" class="search mt12" id="kanjiSearch" placeholder="Cari kanji / reading / arti…" aria-label="Cari kanji">
+    <div class="list mt16" id="kanjiList"></div>
+  </section>
+
+  <!-- ====== KUIS ====== -->
+  <section id="panelQuiz" hidden>
+    <div class="card mt16" id="quizSetup">
+      <h2 class="section">🔤 Kuis ABC Multi-Model</h2>
+      <p class="small mt12" style="line-height:1.6">1 kanji punya 4–5 variasi soal otomatis. Untuk soal melengkapi kalimat, pilihan jawaban sudah disesuaikan dengan <b>bentuk perubahan kata (konjugasi)</b> dalam kalimat.</p>
+      <div class="quiz-type-grid" id="quizTypeGrid">
+        <button type="button" class="quiz-type-btn active" data-qtype="random"><span class="qt-icon">🎲</span> Acak (4 Model Utama)</button>
+        <button type="button" class="quiz-type-btn" data-qtype="random5"><span class="qt-icon">🌟</span> Acak Semua (+Kalimat)</button>
+        <button type="button" class="quiz-type-btn" data-qtype="k2r"><span class="qt-icon">漢→あ</span> Kanji → Hiragana</button>
+        <button type="button" class="quiz-type-btn" data-qtype="k2m"><span class="qt-icon">漢→ID</span> Kanji → Arti</button>
+        <button type="button" class="quiz-type-btn" data-qtype="m2k"><span class="qt-icon">ID→漢</span> Arti → Kanji</button>
+        <button type="button" class="quiz-type-btn" data-qtype="r2k"><span class="qt-icon">あ→漢</span> Hiragana → Kanji</button>
+        <button type="button" class="quiz-type-btn full-width" data-qtype="ex2k"><span class="qt-icon">📖→漢</span> Contoh Kalimat → Kanji (Sesuai Konjugasi)</button>
+      </div>
+      <p class="small muted mt12">Bank soal aktif: <span id="quizPoolInfo" style="font-weight:700; color:var(--text)"></span>.</p>
+      <p class="small mt16"><b>Pilih jumlah soal:</b></p>
+      <div class="quiz-counts mt8">
+        <button type="button" class="btn btn-primary" data-count="10">10 soal</button>
+        <button type="button" class="btn btn-primary" data-count="20">20 soal</button>
+        <button type="button" class="btn btn-primary" data-count="50">50 soal</button>
+        <button type="button" class="btn btn-primary" data-count="100">100 soal</button>
+        <button type="button" class="btn btn-primary" data-count="500">500 soal</button>
+        <button type="button" class="btn btn-orange" id="btnQuizAllBank" data-count="all">Semua (2000)</button>
+      </div>
+      <div class="quiz-custom-row">
+        <input type="number" class="quiz-custom-input" id="quizCustomCount" min="1" max="2500" placeholder="Atau ketik jumlah soal (mis. 600)…">
+        <button type="button" class="btn btn-secondary" id="btnStartCustomQuiz" style="padding:12px 18px; font-size:14px;">Mulai</button>
+      </div>
+      <p class="small muted mt12" id="quizCapNote" style="font-weight:600; color:var(--orange)"></p>
+    </div>
+
+    <div id="quizRun" hidden>
+      <div class="row between mt12">
+        <span class="small muted" id="quizCounter" style="font-weight:700">Soal 1</span>
+        <div class="row" style="gap:8px">
+          <span class="lvl" id="quizModeBadge" style="margin-top:0; background:var(--accent-soft); color:var(--accent)"></span>
+          <button type="button" class="quiz-finish-early" id="btnQuizFinishEarly">Selesai</button>
+        </div>
+      </div>
+      <div class="bar mt12"><i id="quizBar"></i></div>
+      <div class="card quiz-card mt16">
+        <div class="small muted" id="quizPrompt" style="font-weight:700; text-transform:uppercase; letter-spacing:1px; font-size:12px;"></div>
+        <div class="quiz-main" id="quizMain"></div>
+        <div class="quiz-sub muted" id="quizSub"></div>
+      </div>
+      <div class="quiz-options mt16" id="quizOptions"></div>
+      <p class="kbd-hint" id="kbdHintQuiz">⌨ Tekan <kbd>A</kbd>–<kbd>D</kbd> atau <kbd>1</kbd>–<kbd>4</kbd> untuk memilih</p>
+    </div>
+
+    <div id="quizResult" class="mt16" hidden>
+      <div class="card done">
+        <div class="big" id="quizEmoji">🎉</div>
+        <h2 class="section mt8" style="font-size:18px; color:var(--muted)">Skor Akhir</h2>
+        <div class="score-num mt8" id="quizScore">0</div>
+        <p class="small mt12" id="quizScoreMsg" style="font-weight:700; font-size:16px"></p>
+        <p class="muted small mt8" id="quizScoreDetail" style="font-weight:600"></p>
+      </div>
+      <div class="mt16" id="quizWrongWrap" hidden>
+        <div class="section mb8" style="font-size:16px; margin-bottom:10px; color:var(--red);">❌ Perlu Diperbaiki</div>
+        <div class="quiz-review" id="quizWrongList"></div>
+      </div>
+      <div class="mt16" id="quizRightWrap" hidden>
+        <div class="section mb8" style="font-size:16px; margin-bottom:10px; color:var(--green);">✅ Jawaban Benar</div>
+        <div class="quiz-review" id="quizRightList"></div>
+      </div>
+      <button type="button" class="btn btn-primary btn-block mt16" id="btnQuizAgain" style="margin-bottom: 20px;">🔁 Kuis Baru (Acak Ulang)</button>
+    </div>
+  </section>
+
+  <div class="footer-note">500 kata kanji JLPT N4 · hingga 2.500 variasi soal kuis · progres tersimpan di perangkat ini</div>
+</div>
+
+
+  <!-- ====== MODAL KONFIRMASI RESTORE ====== -->
+  <div class="modal-backdrop" id="restoreModal" role="dialog" aria-modal="true" aria-labelledby="restoreModalTitle" aria-describedby="restoreModalDesc" hidden>
+    <div class="modal-box">
+      <div class="modal-title" id="restoreModalTitle">📂 Pulihkan Data Progres</div>
+      <p class="modal-sub" id="restoreModalDesc">Pilih cara memulihkan data dari file backup agar progres belajar yang sudah ada tidak hilang tanpa sengaja.</p>
+      <div class="restore-compare">
+        <div class="rc-card">
+          <div class="rc-label">Progres Saat Ini</div>
+          <div class="rc-val" id="rcCurrentVal">0 hafal · 0 sulit</div>
+          <div class="rc-meta">Tersimpan di browser</div>
+        </div>
+        <div class="rc-card backup">
+          <div class="rc-label">File Backup</div>
+          <div class="rc-val" id="rcBackupVal">0 hafal · 0 sulit</div>
+          <div class="rc-meta" id="rcBackupDate">File .json</div>
+        </div>
+      </div>
+      <div class="rc-warn" id="rcEmptyWarn" role="alert" hidden></div>
+      <div class="rc-warn" id="rcRejectedWarn" role="status" hidden></div>
+      <div class="restore-actions">
+        <button type="button" class="restore-choice merge" id="btnRestoreMerge">
+          <span class="rc-btn-title"><span>🔀 Gabungkan (Merge)</span><span id="rcMergePreview" style="font-size:12px; background:rgba(255,255,255,0.22); padding:2px 8px; border-radius:99px;"></span></span>
+          <span class="rc-btn-desc">Simpan progres saat ini + tambahkan data dari file backup (aman, tidak ada yang terhapus).</span>
+        </button>
+        <button type="button" class="restore-choice replace" id="btnRestoreReplace">
+          <span class="rc-btn-title"><span>♻ Timpa Semua (Replace)</span><span id="rcReplacePreview" style="font-size:12px; background:var(--red-soft); color:var(--red); padding:2px 8px; border-radius:99px;"></span></span>
+          <span class="rc-btn-desc">Hapus progres saat ini dan ganti seluruhnya dengan isi file backup.</span>
+        </button>
+        <button type="button" class="restore-cancel" id="btnRestoreCancel">Batal</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+const KANJI = [["n3","計画","けいかく","rencana","夏休みの計画を立てました。","Menyusun rencana liburan musim panas.","easy"],["n4","旅行","りょこう","perjalanan","京都へ旅行に行きました。","Pergi jalan-jalan ke Kyoto.","easy"],["n6","運動","うんどう","olahraga","毎朝運動しています。","Berolahraga setiap pagi.","easy"],["n7","予定","よてい","rencana, jadwal","明日の予定を教えてください。","Tolong beri tahu jadwal besok.","easy"],["n11","説明","せつめい","penjelasan","説明をよく聞いてください。","Dengarkan penjelasannya baik-baik.","easy"],["n13","意見","いけん","pendapat","みんなの意見を聞きたい。","Ingin mendengar pendapat semua orang.","easy"],["n15","家族","かぞく","keluarga","家族と夕飯を食べます。","Makan malam bersama keluarga.","easy"],["n16","会社","かいしゃ","perusahaan","小さな会社で働いています。","Bekerja di perusahaan kecil.","easy"],["n17","工場","こうじょう","pabrik","車の工場で働いています。","Bekerja di pabrik mobil.","easy"],["n19","仕事","しごと","pekerjaan","仕事が終わりました。","Pekerjaan sudah selesai.","easy"],["n22","病気","びょうき","penyakit","病気で学校を休みました。","Tidak masuk sekolah karena sakit.","easy"],["n27","病院","びょういん","rumah sakit","病院へ行きました。","Pergi ke rumah sakit.","easy"],["n29","試験","しけん","ujian","来週試験があります。","Minggu depan ada ujian.","easy"],["n36","入学","にゅうがく","masuk sekolah","四月に入学します。","Masuk sekolah bulan April.","easy"],["n40","予習","よしゅう","belajar persiapan","明日の授業を予習します。","Mempelajari materi besok lebih dulu.","easy"],["n41","練習","れんしゅう","latihan","発音を練習します。","Berlatih pelafalan.","easy"],["n42","質問","しつもん","pertanyaan","質問がある人はいますか。","Ada yang mau bertanya?","easy"],["n43","問題","もんだい","soal, masalah","この問題は難しいです。","Soal ini sulit.","easy"],["n44","答え","こたえ","jawaban","答えを書いてください。","Tolong tulis jawabannya.","easy"],["n45","意味","いみ","arti","この言葉の意味を調べました。","Mencari arti kata ini.","easy"],["n46","漢字","かんじ","kanji","漢字を覚えるのが難しいです。","Menghafal kanji itu sulit.","easy"],["n47","文法","ぶんぽう","tata bahasa","文法の間違いを直しました。","Memperbaiki kesalahan grammar.","easy"],["n49","教科書","きょうかしょ","buku pelajaran","教科書を開いてください。","Silakan buka buku pelajaran.","easy"],["n50","発表","はっぴょう","presentasi","来週発表があります。","Minggu depan ada presentasi.","easy"],["n53","案内","あんない","panduan, petunjuk","駅まで案内します。","Saya antar sampai stasiun.","easy"],["n55","注文","ちゅうもん","pesanan","ラーメンを注文しました。","Memesan ramen.","easy"],["n56","会計","かいけい","tagihan, pembayaran","会計をお願いします。","Minta tagihannya.","easy"],["n60","店員","てんいん","pramuniaga","店員さんを呼びました。","Memanggil pramuniaga.","easy"],["n61","客","きゃく","pelanggan, tamu","店に客が多いです。","Tokonya ramai pelanggan.","easy"],["n62","料金","りょうきん","biaya, tarif","駐車場の料金を払いました。","Membayar tarif parkir.","easy"],["n64","銀行","ぎんこう","bank","銀行は三時までです。","Bank buka sampai jam tiga.","easy"],["n66","切手","きって","prangko","封筒に切手を貼りました。","Menempelkan prangko di amplop.","easy"],["n68","手紙","てがみ","surat","母に手紙を書きました。","Menulis surat untuk ibu.","easy"],["n71","住所","じゅうしょ","alamat","ここに住所を書いてください。","Tolong tulis alamat di sini.","easy"],["n72","番号","ばんごう","nomor","電話番号を教えてください。","Tolong beri tahu nomor teleponnya.","easy"],["n75","料理","りょうり","masakan","母の料理はおいしいです。","Masakan ibu enak.","easy"],["n76","食事","しょくじ","santapan, makan","家族と食事をしました。","Makan bersama keluarga.","easy"],["n77","飲み物","のみもの","minuman","飲み物を買いました。","Membeli minuman.","easy"],["n78","着物","きもの","kimono","着物を着てみたいです。","Ingin mencoba memakai kimono.","easy"],["n83","写真","しゃしん","foto","桜の写真を撮りました。","Memotret sakura.","easy"],["n84","映画","えいが","film","映画を見ました。","Menonton film.","easy"],["n85","音楽","おんがく","musik","音楽を聞くのが好きです。","Suka mendengarkan musik.","easy"],["n86","新聞","しんぶん","koran","朝、新聞を読みます。","Membaca koran pagi hari.","easy"],["n89","文化","ぶんか","budaya","日本の文化を勉強しています。","Sedang belajar budaya Jepang.","easy"],["n91","科学","かがく","sains","科学の博物館へ行きました。","Pergi ke museum sains.","easy"],["n95","社会","しゃかい","masyarakat","社会問題を考えます。","Memikirkan masalah sosial.","easy"],["n97","世界","せかい","dunia","世界を旅行したいです。","Ingin keliling dunia.","easy"],["n99","自然","しぜん","alam","自然が好きです。","Suka alam.","easy"],["n101","交通","こうつう","transportasi","交通が便利です。","Transportasinya praktis.","easy"],["n102","運転","うんてん","mengemudi","車を運転できます。","Bisa mengemudikan mobil.","easy"],["n104","出発","しゅっぱつ","keberangkatan","七時に出発します。","Berangkat jam tujuh.","easy"],["n105","到着","とうちゃく","kedatangan","飛行機が到着しました。","Pesawatnya sudah tiba.","easy"],["n108","安全","あんぜん","aman","安全な場所に行きました。","Pergi ke tempat yang aman.","easy"],["n109","注意","ちゅうい","perhatian, peringatan","車に注意してください。","Hati-hati dengan mobil.","easy"],["n111","台風","たいふう","topan","台風が近づいています。","Topan sedang mendekat.","easy"],["n112","火事","かじ","kebakaran","火事で家が焼けました。","Rumah terbakar karena kebakaran.","easy"],["n123","最近","さいきん","akhir-akhir ini","最近忙しいです。","Akhir-akhir ini sibuk.","easy"],["n124","週末","しゅうまつ","akhir pekan","週末は家で休みます。","Akhir pekan istirahat di rumah.","easy"],["n127","入口","いりぐち","pintu masuk","入口はあちらです。","Pintu masuk di sebelah sana.","easy"],["n128","出口","でぐち","pintu keluar","出口を探しています。","Sedang mencari pintu keluar.","easy"],["n131","台所","だいどころ","dapur","台所で料理をします。","Memasak di dapur.","easy"],["n137","空","そら","langit","空が青いです。","Langitnya biru.","easy"],["n141","働く","はたらく","bekerja","兄は銀行で働いています。","Kakak laki-laki bekerja di bank.","easy"],["n142","動く","うごく","bergerak, beroperasi","この時計はもう動きません。","Jam ini sudah tidak bergerak lagi.","easy"],["n143","歩く","あるく","berjalan kaki","毎日駅まで歩きます。","Setiap hari berjalan kaki sampai stasiun.","easy"],["n144","走る","はしる","berlari","公園を走っています。","Sedang berlari di taman.","easy"],["n145","起きる","おきる","bangun tidur","毎朝六時に起きます。","Setiap pagi bangun jam enam.","easy"],["n146","帰る","かえる","pulang","仕事が終わってから家へ帰ります。","Pulang ke rumah setelah pekerjaan selesai.","easy"],["n147","使う","つかう","menggunakan, memakai","このパソコンを使ってもいいですか。","Bolehkah menggunakan komputer ini?","easy"],["n148","作る","つくる","membuat","朝ご飯を作りました。","Membuat sarapan.","easy"],["n149","持つ","もつ","membawa, memiliki","荷物を持ちましょうか。","Mari saya bawakan barangnya.","easy"],["n150","知る","しる","tahu, mengenal","彼の電話番号を知っていますか。","Apakah tahu nomor teleponnya?","easy"],["n151","思う","おもう","mengira, berpikir","明日は雨が降ると思います。","Saya rasa besok akan turun hujan.","easy"],["n152","考える","かんがえる","berpikir, mempertimbangkan","もう一度よく考えてみます。","Akan mencoba berpikir baik-baik sekali lagi.","easy"],["n153","決める","きめる","memutuskan, menentukan","行く日を決めてください。","Tolong tentukan hari keberangkatannya.","easy"],["n154","決まる","きまる","diputuskan, sudah pasti","会議の時間が決まりました。","Waktu rapat sudah ditentukan.","easy"],["n155","集める","あつめる","mengumpulkan","古い切手を集めています。","Sedang mengumpulkan prangko lama.","easy"],["n156","集まる","あつまる","berkumpul","駅の前に十時に集まりましょう。","Mari berkumpul di depan stasiun jam sepuluh.","easy"],["n157","始める","はじめる","memulai","これから会議を始めます。","Sekarang akan memulai rapat.","easy"],["n158","始まる","はじまる","dimulai, mulai","映画は何時に始まりますか。","Filmnya mulai jam berapa?","easy"],["n159","終わる","おわる","selesai, berakhir","授業は四時に終わります。","Pelajaran selesai jam empat.","easy"],["n160","止まる","とまる","berhenti","ここに車が止まりました。","Mobil berhenti di sini.","easy"],["n161","止める","とめる","menghentikan, memarkir","ここに自転車を止めないでください。","Tolong jangan memarkir sepeda di sini.","easy"],["n162","開ける","あける","membuka","ドアを開けてください。","Tolong buka pintunya.","easy"],["n163","開く","あく","terbuka, buka","銀行は九時に開きます。","Bank buka jam sembilan.","easy"],["n164","閉める","しめる","menutup","窓を閉めてもいいですか。","Bolehkah menutup jendelanya?","easy"],["n165","閉まる","しまる","tertutup, tutup","この店は夜十時に閉まります。","Toko ini tutup jam sepuluh malam.","easy"],["n166","乗る","のる","naik (kendaraan)","毎朝電車に乗ります。","Setiap pagi naik kereta.","easy"],["n167","降りる","おりる","turun (kendaraan)","次の駅で降ります。","Turun di stasiun berikutnya.","easy"],["n168","着く","つく","tiba, sampai","無事に空港に着きました。","Sudah tiba dengan selamat di bandara.","easy"],["n169","着る","きる","memakai (baju atasan)","寒いからコートを着ます。","Karena dingin memakai mantel.","easy"],["n170","洗う","あらう","mencuci","食事の前に手を洗います。","Mencuci tangan sebelum makan.","easy"],["n171","習う","ならう","belajar (dari seseorang)","先生に日本語を習っています。","Sedang belajar bahasa Jepang dari guru.","easy"],["n172","教える","おしえる","mengajar, memberi tahu","やり方を教えてください。","Tolong beri tahu caranya.","easy"],["n173","借りる","かりる","meminjam","図書館で本を借りました。","Meminjam buku di perpustakaan.","easy"],["n174","貸す","かす","meminjamkan","ペンを貸してください。","Tolong pinjamkan pulpen.","easy"],["n175","返す","かえす","mengembalikan","友達に本を返しました。","Mengembalikan buku kepada teman.","easy"],["n176","送る","おくる","mengirim, mengantar","メールを送りました。","Sudah mengirim email.","easy"],["n177","待つ","まつ","menunggu","ここで少し待ってください。","Tolong tunggu sebentar di sini.","easy"],["n178","急ぐ","いそぐ","buru-buru, bergegas","時間がないので急ぎましょう。","Karena tidak ada waktu, mari bergegas.","easy"],["n179","売る","うる","menjual","この店では野菜を売っています。","Di toko ini menjual sayuran.","easy"],["n180","通う","かよう","pulang-pergi rutin (sekolah/kerja)","電車で会社に通っています。","Pulang-pergi ke kantor naik kereta.","easy"],["n181","通る","とおる","melewati, melalui","このバスは駅の前を通ります。","Bus ini melewati depan stasiun.","easy"],["n182","進む","すすむ","maju, berkembang","前へ進んでください。","Silakan maju ke depan.","easy"],["n183","続く","つづく","berlanjut, bersambung","雨の日が三日続いています。","Hari hujan berlanjut selama tiga hari.","easy"],["n184","続ける","つづける","melanjutkan","これからも日本語の勉強を続けます。","Mulai sekarang pun akan melanjutkan belajar bahasa Jepang.","easy"],["n185","変わる","かわる","berubah","季節が変わりました。","Musim telah berubah.","easy"],["n186","変える","かえる","mengubah","予定を変えました。","Mengubah jadwal.","easy"],["n187","落ちる","おちる","jatuh","木から葉が落ちました。","Daun jatuh dari pohon.","easy"],["n188","消える","きえる","padam, menghilang","部屋の電気が消えました。","Lampu kamar padam.","easy"],["n189","消す","けす","memadamkan, menghapus","寝る前に電気を消してください。","Tolong matikan lampu sebelum tidur.","easy"],["n190","勝つ","かつ","menang","試合に勝ちました。","Menang pertandingan.","easy"],["n191","負ける","まける","kalah","残念ながら試合に負けました。","Sayang sekali kalah dalam pertandingan.","easy"],["n192","建てる","たてる","membangun, mendirikan","新しい家を建てました。","Membangun rumah baru.","easy"],["n193","早い","はやい","cepat (waktu), awal","毎朝早い時間に起きます。","Setiap pagi bangun di waktu yang awal.","easy"],["n194","速い","はやい","cepat (kecepatan)","新幹線はとても速いです。","Shinkansen sangat cepat.","easy"],["n195","近い","ちかい","dekat","家は駅から近いです。","Rumah dekat dari stasiun.","easy"],["n196","遠い","とおい","jauh","会社は家から遠いです。","Kantor jauh dari rumah.","easy"],["n197","強い","つよい","kuat","今日は風が強いです。","Hari ini anginnya kuat.","easy"],["n198","弱い","よわい","lemah","私はお酒に弱いです。","Saya lemah terhadap minuman beralkohol.","easy"],["n199","明るい","あかるい","terang, ceria","この部屋はとても明るいです。","Kamar ini sangat terang.","easy"],["n200","暗い","くらい","gelap","外が暗くなりました。","Di luar sudah menjadi gelap.","easy"],["n201","重い","おもい","berat","このかばんは重いです。","Tas ini berat.","easy"],["n202","軽い","かるい","ringan","軽いくつを買いました。","Membeli sepatu yang ringan.","easy"],["n203","太い","ふとい","gemuk, tebal (silinder)","このペンは字が太いです。","Pulpen ini tulisannya tebal.","easy"],["n204","広い","ひろい","luas","この公園はとても広いです。","Taman ini sangat luas.","easy"],["n205","深い","ふかい","dalam","この川は深いから危ないです。","Sungai ini dalam jadi berbahaya.","easy"],["n206","暑い","あつい","panas (cuaca)","今日はとても暑いです。","Hari ini sangat panas.","easy"],["n207","寒い","さむい","dingin (cuaca)","冬は朝が寒いです。","Saat musim dingin paginya dingin.","easy"],["n208","楽しい","たのしい","menyenangkan","旅行はとても楽しかったです。","Perjalanannya sangat menyenangkan.","easy"],["n209","美しい","うつくしい","indah, cantik","山の景色が美しいです。","Pemandangan gunungnya indah.","easy"],["n210","若い","わかい","muda","あの先生はまだ若いです。","Guru itu masih muda.","easy"],["n211","正しい","ただしい","benar, tepat","正しい答えを選んでください。","Pilihlah jawaban yang benar.","easy"],["n212","親切","しんせつ","ramah, baik hati","駅の人が親切に教えてくれました。","Petugas stasiun memberi tahu dengan ramah.","easy"],["n213","便利","べんり","praktis","このアプリはとても便利です。","Aplikasi ini sangat praktis.","easy"],["n214","不便","ふべん","tidak praktis, repot","車がないと生活が不便です。","Kalau tidak ada mobil kehidupannya repot.","easy"],["n215","元気","げんき","sehat, bersemangat","おばあちゃんはいつも元気です。","Nenek selalu sehat dan bersemangat.","easy"],["n216","有名","ゆうめい","terkenal","ここは有名な場所です。","Ini adalah tempat yang terkenal.","easy"],["n217","特別","とくべつ","khusus, spesial","今日は特別な日です。","Hari ini adalah hari yang spesial.","easy"],["n218","大切","たいせつ","penting, berharga","家族との時間を大切にしています。","Menghargai waktu bersama keluarga.","easy"],["n219","大事","だいじ","penting, berharga","健康が一番大事です。","Kesehatan adalah yang paling penting.","easy"],["n220","必要","ひつよう","perlu, dibutuhkan","申し込みには写真が必要です。","Untuk pendaftaran diperlukan foto.","easy"],["n221","自由","じゆう","bebas","午後は自由な時間があります。","Siang hari ada waktu bebas.","easy"],["n222","安心","あんしん","tenang, lega","連絡をもらって安心しました。","Merasa lega setelah mendapat kabar.","easy"],["n223","心配","しんぱい","khawatir, cemas","明日の天気が心配です。","Khawatir dengan cuaca besok.","easy"],["n224","十分","じゅうぶん","cukup","まだ時間が十分あります。","Masih ada cukup waktu.","easy"],["n225","場所","ばしょ","tempat, lokasi","会議の場所を教えてください。","Tolong beri tahu lokasi rapatnya.","easy"],["n226","理由","りゆう","alasan","遅れた理由を話しました。","Menceritakan alasan terlambat.","easy"],["n227","原因","げんいん","penyebab","事故の原因を調べています。","Sedang menyelidiki penyebab kecelakaan.","easy"],["n228","目的","もくてき","tujuan","旅行の目的は何ですか。","Apa tujuan perjalanannya?","easy"],["n229","方法","ほうほう","cara, metode","いい方法を見つけました。","Menemukan cara yang bagus.","easy"],["n230","用事","ようじ","urusan, keperluan","今日は午後から用事があります。","Hari ini ada keperluan mulai siang.","easy"],["n231","返事","へんじ","balasan, jawaban","メールの返事を書きました。","Menulis balasan email.","easy"],["n232","気持ち","きもち","perasaan","気持ちがいい朝ですね。","Pagi yang terasa menyegarkan ya.","easy"],["n233","気分","きぶん","suasana hati, kondisi badan","今日は気分がいいです。","Hari ini perasaan/kondisi badan sedang enak.","easy"],["n234","心","こころ","hati, perasaan","心から感謝しています。","Berterima kasih dari lubuk hati.","easy"],["n235","体","からだ","tubuh, badan","体に気をつけてください。","Tolong jaga kesehatan tubuh.","easy"],["n236","声","こえ","suara (makhluk hidup)","大きい声で話してください。","Tolong bicara dengan suara yang keras.","easy"],["n237","音","おと","bunyi, suara (benda)","外から変な音がします。","Terdengar bunyi aneh dari luar.","easy"],["n238","色","いろ","warna","どの色が好きですか。","Suka warna yang mana?","easy"],["n239","形","かたち","bentuk","丸い形のケーキを買いました。","Membeli kue yang bentuknya bulat.","easy"],["n240","味","あじ","rasa","このスープはいい味がします。","Sup ini rasanya enak.","easy"],["n241","光","ひかり","cahaya, sinar","太陽の光が入ってきます。","Cahaya matahari masuk ke dalam.","easy"],["n242","部屋","へや","kamar, ruangan","自分の部屋を片付けました。","Merapikan kamar sendiri.","easy"],["n243","建物","たてもの","bangunan, gedung","あの白い建物は図書館です。","Gedung putih itu adalah perpustakaan.","easy"],["n244","会場","かいじょう","tempat acara, aula","試験の会場に着きました。","Sudah tiba di lokasi ujian.","easy"],["n245","受付","うけつけ","resepsionis, meja pendaftaran","受付で名前を書いてください。","Silakan tulis nama di resepsionis.","easy"],["n246","時計","とけい","jam (arloji/dinding)","壁の時計を見ました。","Melihat jam dinding.","easy"],["n247","電気","でんき","listrik, lampu","部屋の電気をつけました。","Menyalakan lampu kamar.","easy"],["n248","電車","でんしゃ","kereta listrik","満員電車に乗りました。","Naik kereta yang penuh sesak.","easy"],["n249","地下鉄","ちかてつ","kereta bawah tanah (MRT)","地下鉄の方が速いです。","Naik kereta bawah tanah lebih cepat.","easy"],["n250","新幹線","しんかんせん","Shinkansen (kereta cepat)","新幹線で東京へ行きます。","Pergi ke Tokyo naik Shinkansen.","easy"],["n251","自転車","じてんしゃ","sepeda","自転車で買い物に行きます。","Pergi belanja naik sepeda.","easy"],["n252","地図","ちず","peta","スマホで地図を見ます。","Melihat peta di HP.","easy"],["n253","無料","むりょう","gratis","このアプリは無料で使えます。","Aplikasi ini bisa dipakai secara gratis.","easy"],["n254","有料","ゆうりょう","berbayar","ここから先は有料です。","Mulai dari sini ke depan berbayar.","easy"],["n255","半額","はんがく","setengah harga (diskon 50%)","夜八時からお弁当が半額になります。","Mulai jam delapan malam bento jadi setengah harga.","easy"],["n256","生活","せいかつ","kehidupan sehari-hari","日本の生活に慣れました。","Sudah terbiasa dengan kehidupan di Jepang.","easy"],["n257","近所","きんじょ","tetangga, lingkungan sekitar","近所のスーパーで買いました。","Membeli di supermarket dekat rumah.","easy"],["n258","中止","ちゅうし","pembatalan, dihentikan","雨で試合が中止になりました。","Pertandingan dibatalkan karena hujan.","easy"],["n259","参加","さんか","partisipasi, ikut serta","イベントに参加しました。","Ikut serta dalam acara.","easy"],["n260","出席","しゅっせき","hadir, kehadiran","明日の会議に出席します。","Akan hadir di rapat besok.","easy"],["n261","欠席","けっせき","absen, tidak hadir","風邪で授業を欠席しました。","Tidak hadir di kelas karena flu.","easy"],["n262","医者","いしゃ","dokter","すぐ医者に診てもらいました。","Langsung diperiksa oleh dokter.","easy"],["n263","友達","ともだち","teman","週末に友達と遊びます。","Akhir pekan bermain bersama teman.","easy"],["n264","両親","りょうしん","kedua orang tua","両親は田舎に住んでいます。","Kedua orang tua tinggal di kampung.","easy"],["n265","兄弟","きょうだい","saudara kandung","兄弟は三人います。","Punya tiga saudara kandung.","easy"],["n266","子供","こども","anak-anak","公園で子供が遊んでいます。","Anak-anak sedang bermain di taman.","easy"],["n267","大人","おとな","orang dewasa","大人二人と子供一人です。","Dewasa dua orang dan anak-anak satu orang.","easy"],["n268","男性","だんせい","pria, laki-laki","あの背が高い男性は誰ですか。","Siapa pria bertubuh tinggi itu?","easy"],["n269","女性","じょせい","wanita, perempuan","働く女性が増えています。","Wanita yang bekerja semakin bertambah.","easy"],["n270","自分","じぶん","diri sendiri","自分のことは自分でします。","Urusan sendiri dilakukan sendiri.","easy"],["n271","相手","あいて","lawan bicara, pasangan, rekan","相手の話をよく聞きましょう。","Mari dengarkan pembicaraan lawan bicara baik-baik.","easy"],["n272","社長","しゃちょう","direktur utama, presdir","社長に挨拶しました。","Memberi salam kepada direktur.","easy"],["n273","部長","ぶちょう","kepala bagian, manajer","部長に書類を出しました。","Menyerahkan dokumen kepada kepala bagian.","easy"],["n274","人口","じんこう","jumlah penduduk, populasi","この町の人口は五万人です。","Populasi kota ini lima puluh ribu jiwa.","easy"],["n275","都会","とかい","kota besar","都会は交通が便利です。","Di kota besar transportasinya praktis.","easy"],["n276","海","うみ","laut, pantai","夏休みに海へ泳ぎに行きます。","Saat liburan musim panas pergi berenang ke laut.","easy"],["n277","天気","てんき","cuaca","明日は天気がいいでしょう。","Besok cuacanya mungkin cerah.","easy"],["n278","空気","くうき","udara, suasana","山の上は空気がきれいです。","Di atas gunung udaranya bersih.","easy"],["n279","水道","すいどう","air ledeng (PDAM)","日本の水道の水は飲めます。","Air keran di Jepang bisa diminum.","easy"],["n280","昼休み","ひるやすみ","istirahat siang","昼休みに銀行へ行きます。","Pergi ke bank saat jam istirahat siang.","easy"],["n281","平日","へいじつ","hari kerja (Senin–Jumat)","平日は毎日働いています。","Saat hari kerja setiap hari bekerja.","easy"],["n282","本当","ほんとう","benar, sungguh, asli","その話は本当ですか。","Apakah cerita itu benar?","easy"],["n283","最初","さいしょ","pertama, paling awal","最初は日本語が分かりませんでした。","Awalnya saya tidak mengerti bahasa Jepang.","easy"],["n284","最後","さいご","terakhir, paling akhir","最後まであきらめないでください。","Tolong jangan menyerah sampai akhir.","easy"],["n285","全部","ぜんぶ","semua, seluruhnya","宿題は全部終わりました。","PR sudah selesai semuanya.","easy"],["n286","半分","はんぶん","setengah, separuh","りんごを半分に切りました。","Memotong apel menjadi dua (setengah).","easy"],["n287","普通","ふつう","biasa, reguler","この電車は普通電車です。","Kereta ini adalah kereta lokal/reguler.","easy"],["n288","最高","さいこう","terbaik, paling tinggi","今日の天気は最高です。","Cuaca hari ini luar biasa bagus.","easy"],["n1","会議","かいぎ","rapat","午後から会議があります。","Ada rapat mulai siang.","medium"],["n2","経験","けいけん","pengalaman","日本で働いた経験があります。","Punya pengalaman bekerja di Jepang.","medium"],["n5","趣味","しゅみ","hobi","趣味は写真を撮ることです。","Hobiku memotret.","medium"],["n8","約束","やくそく","janji","友達と約束があります。","Ada janji dengan teman.","medium"],["n9","連絡","れんらく","kabar, kontak","あとで連絡します。","Nanti saya hubungi.","medium"],["n10","相談","そうだん","konsultasi","先生に相談しました。","Berkonsultasi dengan guru.","medium"],["n12","報告","ほうこく","laporan","結果を報告しました。","Melaporkan hasilnya.","medium"],["n14","関係","かんけい","hubungan","二人はいい関係です。","Keduanya berhubungan baik.","medium"],["n18","事務所","じむしょ","kantor","事務所は駅の近くです。","Kantornya dekat stasiun.","medium"],["n20","残業","ざんぎょう","lembur","今日は残業があります。","Hari ini ada lembur.","medium"],["n24","頭痛","ずつう","sakit kepala","頭痛がします。","Kepalaku sakit.","medium"],["n26","薬","くすり","obat","この薬を飲んでください。","Tolong minum obat ini.","medium"],["n28","健康","けんこう","kesehatan","健康に気をつけています。","Menjaga kesehatan.","medium"],["n30","合格","ごうかく","lulus","試験に合格しました。","Lulus ujian.","medium"],["n31","失敗","しっぱい","kegagalan","失敗から学びました。","Belajar dari kegagalan.","medium"],["n32","成功","せいこう","kesuksesan","実験が成功しました。","Eksperimennya berhasil.","medium"],["n33","努力","どりょく","usaha","毎日努力しています。","Berusaha setiap hari.","medium"],["n34","成績","せいせき","nilai","成績が上がりました。","Nilainya naik.","medium"],["n35","卒業","そつぎょう","kelulusan","三月に卒業します。","Lulus bulan Maret.","medium"],["n37","授業","じゅぎょう","pelajaran di kelas","授業は九時からです。","Pelajaran mulai jam sembilan.","medium"],["n38","宿題","しゅくだい","PR (pekerjaan rumah)","宿題を出してください。","Tolong kumpulkan PR.","medium"],["n39","復習","ふくしゅう","mengulang pelajaran","今日の文法を復習しました。","Mengulang grammar hari ini.","medium"],["n48","辞書","じしょ","kamus","辞書で意味を調べます。","Mencari arti di kamus.","medium"],["n51","準備","じゅんび","persiapan","旅行の準備をしています。","Sedang mempersiapkan perjalanan.","medium"],["n52","出張","しゅっちょう","perjalanan dinas","大阪へ出張します。","Dinas ke Osaka.","medium"],["n54","予約","よやく","reservasi","ホテルを予約しました。","Memesan hotel.","medium"],["n57","割引","わりびき","diskon","学生は割引があります。","Pelajar dapat diskon.","medium"],["n58","値段","ねだん","harga","この店は値段が安いです。","Toko ini harganya murah.","medium"],["n59","商品","しょうひん","produk, barang dagangan","新しい商品が入りました。","Produk baru sudah masuk.","medium"],["n63","両替","りょうがえ","penukaran uang","空港で両替しました。","Menukar uang di bandara.","medium"],["n65","郵便局","ゆうびんきょく","kantor pos","郵便局で荷物を出しました。","Mengirim barang di kantor pos.","medium"],["n67","葉書","はがき","kartu pos","友達に葉書を送りました。","Mengirim kartu pos ke teman.","medium"],["n69","荷物","にもつ","barang bawaan","荷物が重いです。","Barang bawaannya berat.","medium"],["n70","小包","こづつみ","paket kecil","小包が届きました。","Paketnya sudah tiba.","medium"],["n74","掃除","そうじ","bersih-bersih","部屋を掃除しました。","Membersihkan kamar.","medium"],["n87","雑誌","ざっし","majalah","駅で雑誌を買いました。","Membeli majalah di stasiun.","medium"],["n88","小説","しょうせつ","novel","寝る前に小説を読みます。","Membaca novel sebelum tidur.","medium"],["n90","歴史","れきし","sejarah","歴史に興味があります。","Tertarik pada sejarah.","medium"],["n92","技術","ぎじゅつ","teknologi, teknik","日本の技術はすごいです。","Teknologi Jepang hebat.","medium"],["n93","経済","けいざい","ekonomi","経済のニュースを読みました。","Membaca berita ekonomi.","medium"],["n94","国際","こくさい","internasional","国際会議に参加しました。","Ikut konferensi internasional.","medium"],["n96","政治","せいじ","politik","政治に関心がありません。","Tidak tertarik pada politik.","medium"],["n98","地球","ちきゅう","bumi","地球は丸いです。","Bumi itu bulat.","medium"],["n100","環境","かんきょう","lingkungan","環境を守りましょう。","Mari jaga lingkungan.","medium"],["n103","駐車","ちゅうしゃ","parkir","ここに駐車してください。","Silakan parkir di sini.","medium"],["n106","事故","じこ","kecelakaan","交通事故がありました。","Terjadi kecelakaan lalu lintas.","medium"],["n107","危険","きけん","berbahaya","ここは危険です。","Di sini berbahaya.","medium"],["n110","地震","じしん","gempa bumi","昨夜、地震がありました。","Tadi malam ada gempa.","medium"],["n113","警察","けいさつ","polisi","警察に電話しました。","Menelepon polisi.","medium"],["n115","法律","ほうりつ","hukum","新しい法律ができました。","Ada undang-undang baru.","medium"],["n116","規則","きそく","peraturan","規則を守ってください。","Tolong patuhi peraturan.","medium"],["n117","祭り","まつり","festival","夏祭りに行きました。","Pergi ke festival musim panas.","medium"],["n118","神社","じんじゃ","kuil Shinto","神社にお参りしました。","Bersembahyang ke kuil.","medium"],["n119","習慣","しゅうかん","kebiasaan","日本の習慣を学びました。","Mempelajari kebiasaan Jepang.","medium"],["n120","将来","しょうらい","masa depan","将来の夢を話しました。","Menceritakan mimpi masa depan.","medium"],["n121","希望","きぼう","harapan","希望を持っています。","Punya harapan.","medium"],["n122","夢","ゆめ","mimpi","大きな夢があります。","Punya mimpi besar.","medium"],["n125","季節","きせつ","musim","一番好きな季節は秋です。","Musim favoritku adalah gugur.","medium"],["n126","途中","とちゅう","di tengah jalan","途中で雨が降りました。","Di tengah jalan turun hujan.","medium"],["n129","階段","かいだん","tangga","階段を上がってください。","Silakan naik tangga.","medium"],["n130","窓","まど","jendela","窓を開けました。","Membuka jendela.","medium"],["n132","庭","にわ","halaman","庭に花を植えました。","Menanam bunga di halaman.","medium"],["n133","橋","はし","jembatan","長い橋を渡りました。","Menyeberangi jembatan panjang.","medium"],["n134","島","しま","pulau","小さな島に住んでいます。","Tinggal di pulau kecil.","medium"],["n138","星","ほし","bintang","星がきれいです。","Bintangnya indah.","medium"],["n139","太陽","たいよう","matahari","太陽が昇りました。","Matahari terbit.","medium"],["n289","寝る","ねる","tidur","毎晩十一時に寝ます。","Setiap malam tidur jam sebelas.","medium"],["n290","届く","とどく","sampai, tiba (barang/pesan)","注文した荷物が届きました。","Barang yang dipesan sudah sampai.","medium"],["n291","届ける","とどける","mengantarkan, menyampaikan","忘れ物を警察に届けました。","Mengantarkan barang tertinggal ke kantor polisi.","medium"],["n292","慣れる","なれる","terbiasa","新しい仕事にもう慣れましたか。","Apakah sudah terbiasa dengan pekerjaan baru?","medium"],["n293","疲れる","つかれる","lelah, capek","今日はたくさん歩いて疲れました。","Hari ini capek karena banyak berjalan.","medium"],["n294","困る","こまる","bingung, kesulitan, repot","パスポートをなくして困っています。","Sedang kesulitan karena kehilangan paspor.","medium"],["n295","忘れる","わすれる","lupa","宿題を持ってくるのを忘れました。","Lupa membawa PR.","medium"],["n296","覚える","おぼえる","menghafal, mengingat","新しい言葉を十個覚えました。","Menghafal sepuluh kosakata baru.","medium"],["n297","調べる","しらべる","memeriksa, mencari tahu","電車の時間を調べています。","Sedang mencari tahu jadwal kereta.","medium"],["n298","選ぶ","えらぶ","memilih","好きな色を一つ選んでください。","Silakan pilih satu warna yang disukai.","medium"],["n299","運ぶ","はこぶ","mengangkut, membawa","机を隣の部屋へ運びました。","Mengangkut meja ke ruangan sebelah.","medium"],["n300","直す","なおす","memperbaiki, membetulkan","間違えたところを直してください。","Tolong perbaiki bagian yang salah.","medium"],["n301","治る","なおる","sembuh","やっと風邪が治りました。","Akhirnya flunya sembuh.","medium"],["n302","泣く","なく","menangis","映画を見て泣いてしまいました。","Menangis setelah menonton film.","medium"],["n303","笑う","わらう","tertawa, tersenyum","みんなで楽しく笑いました。","Tertawa gembira bersama semuanya.","medium"],["n304","怒る","おこる","marah","遅刻して先生に怒られました。","Dimarahi guru karena terlambat.","medium"],["n305","喜ぶ","よろこぶ","bergembira, senang","プレゼントをあげたら喜びました。","Dia senang ketika diberi hadiah.","medium"],["n306","払う","はらう","membayar","レジでお金を払います。","Membayar uang di kasir.","medium"],["n307","渡る","わたる","menyeberang","信号が青になってから渡ります。","Menyeberang setelah lampu lalu lintas menjadi hijau.","medium"],["n308","曲がる","まがる","belok, membengkok","次の角を右に曲がってください。","Tolong belok kanan di tikungan berikutnya.","medium"],["n309","戻る","もどる","kembali (ke tempat semula)","すぐ席に戻ります。","Segera kembali ke tempat duduk.","medium"],["n310","増える","ふえる","bertambah","今年は外国人観光客が増えました。","Tahun ini wisatawan asing bertambah.","medium"],["n311","減る","へる","berkurang","お腹が減りましたね。","Perut sudah lapar (berkurang isinya) ya.","medium"],["n312","割れる","われる","pecah, terbelah","コップが落ちて割れました。","Gelasnya jatuh lalu pecah.","medium"],["n313","焼く","やく","memanggang, membakar","朝はパンを焼いて食べます。","Pagi hari memanggang roti lalu memakannya.","medium"],["n314","冷える","ひえる","menjadi dingin","夜は体が冷えます。","Malam hari tubuh menjadi dingin.","medium"],["n315","泳ぐ","およぐ","berenang","プールで一時間泳ぎました。","Berenang satu jam di kolam renang.","medium"],["n316","遊ぶ","あそぶ","bermain, main","休みの日に友達と遊びました。","Bermain dengan teman di hari libur.","medium"],["n317","歌う","うたう","bernyanyi","カラオケで日本の歌を歌いました。","Menyanyikan lagu Jepang di karaoke.","medium"],["n318","頼む","たのむ","meminta tolong, memesan","友達に引っ越しの手伝いを頼みました。","Meminta bantuan pindahan kepada teman.","medium"],["n319","断る","ことわる","menolak","忙しいので誘いを断りました。","Menolak ajakan karena sibuk.","medium"],["n320","遅れる","おくれる","terlambat","バスが十分遅れています。","Busnya terlambat sepuluh menit.","medium"],["n321","遅い","おそい","lambat, larut (waktu)","昨日は寝るのが遅かったです。","Kemarin tidurnya larut malam.","medium"],["n322","細い","ほそい","tipis, kurus, sempit (jalan)","この先は道が細いです。","Di depan sana jalannya sempit.","medium"],["n323","厚い","あつい","tebal (benda pipih/buku)","厚い辞書を使っています。","Menggunakan kamus yang tebal.","medium"],["n324","暖かい","あたたかい","hangat (cuaca/udara)","春になって暖かくなりました。","Sudah masuk musim semi dan menjadi hangat.","medium"],["n325","涼しい","すずしい","sejuk","秋は風が涼しいです。","Saat musim gugur anginnya sejuk.","medium"],["n326","甘い","あまい","manis","甘いお菓子が好きです。","Suka camilan yang manis.","medium"],["n327","苦い","にがい","pahit","この薬は少し苦いです。","Obat ini sedikit pahit.","medium"],["n328","痛い","いたい","sakit, nyeri","昨日から歯が痛いです。","Sejak kemarin gigi terasa sakit.","medium"],["n329","悲しい","かなしい","sedih","悲しいニュースを聞きました。","Mendengar berita yang menyedihkan.","medium"],["n330","忙しい","いそがしい","sibuk","今週は仕事が忙しいです。","Minggu ini pekerjaan sedang sibuk.","medium"],["n331","優しい","やさしい","baik hati, lembut","姉はとても優しい人です。","Kakak perempuan adalah orang yang sangat baik hati.","medium"],["n332","難しい","むずかしい","sulit, susah","この試験はあまり難しくなかったです。","Ujian ini tidak terlalu sulit.","medium"],["n333","危ない","あぶない","berbahaya","ここは車が通るので危ないです。","Di sini berbahaya karena dilalui mobil.","medium"],["n334","簡単","かんたん","mudah, sederhana","簡単な料理なら作れます。","Kalau masakan yang sederhana saya bisa buat.","medium"],["n335","無理","むり","tidak mungkin, memaksakan diri","無理をしないで休んでください。","Tolong istirahat dan jangan memaksakan diri.","medium"],["n336","残念","ざんねん","sayang sekali, mengecewakan","行けなくて本当に残念です。","Sungguh sayang sekali tidak bisa pergi.","medium"],["n337","熱心","ねっしん","tekun, antusias","彼は熱心に勉強しています。","Dia belajar dengan tekun.","medium"],["n338","結果","けっか","hasil","試験の結果が出ました。","Hasil ujian sudah keluar.","medium"],["n339","都合","つごう","kondisi waktu/keadaan","明日はちょっと都合が悪いです。","Besok kebetulan waktunya kurang memungkinkan.","medium"],["n340","紹介","しょうかい","perkenalan","友達にいい店を紹介しました。","Memperkenalkan toko yang bagus kepada teman.","medium"],["n341","頭","あたま","kepala, pikiran","彼はとても頭がいいです。","Dia sangat pintar.","medium"],["n342","顔","かお","wajah, muka","朝起きて顔を洗います。","Bangun pagi lalu mencuci muka.","medium"],["n343","首","くび","leher","パソコンを見すぎて首が痛いです。","Leher terasa sakit karena terlalu lama melihat komputer.","medium"],["n344","指","ゆび","jari","料理中に指を切ってしまいました。","Jari tidak sengaja teriris saat memasak.","medium"],["n345","歯","は","gigi","寝る前に歯を磨きます。","Menggosok gigi sebelum tidur.","medium"],["n346","服","ふく","pakaian, baju","新しい服を買いに行きます。","Pergi membeli pakaian baru.","medium"],["n347","野菜","やさい","sayuran","健康のために野菜を食べます。","Makan sayuran demi kesehatan.","medium"],["n348","果物","くだもの","buah-buahan","冷蔵庫に果物が入っています。","Di dalam kulkas ada buah-buahan.","medium"],["n349","肉","にく","daging","スーパーで肉と魚を買いました。","Membeli daging dan ikan di supermarket.","medium"],["n350","魚","さかな","ikan","海の近くなので魚がおいしいです。","Karena dekat laut, ikannya enak.","medium"],["n351","米","こめ","beras","お米を五キロ買いました。","Membeli beras lima kilogram.","medium"],["n352","お茶","おちゃ","teh (Jepang)","温かいお茶をどうぞ。","Silakan teh hangatnya.","medium"],["n353","お酒","おさけ","minuman beralkohol, sake","二十歳からお酒が飲めます。","Mulai usia dua puluh tahun boleh minum alkohol.","medium"],["n354","牛乳","ぎゅうにゅう","susu sapi","毎朝冷たい牛乳を飲みます。","Setiap pagi minum susu dingin.","medium"],["n355","飛行機","ひこうき","pesawat terbang","飛行機で北海道へ行きました。","Pergi ke Hokkaido naik pesawat terbang.","medium"],["n356","空港","くうこう","bandara","空港までバスで行きます。","Pergi sampai bandara naik bus.","medium"],["n357","船","ふね","kapal, perahu","船で島へ渡りました。","Menyeberang ke pulau naik kapal.","medium"],["n358","交差点","こうさてん","perempatan, persimpangan","あの交差点を左に曲がります。","Belok kiri di perempatan itu.","medium"],["n359","信号","しんごう","lampu lalu lintas","信号が赤に変わりました。","Lampu lalu lintas berubah menjadi merah.","medium"],["n360","道路","どうろ","jalan raya","朝は道路が混んでいます。","Pagi hari jalan raya ramai/macet.","medium"],["n361","禁止","きんし","larangan, dilarang","ここは写真撮影が禁止です。","Di sini dilarang mengambil foto.","medium"],["n362","営業","えいぎょう","bisnis, buka usaha/operasional","この店は夜遅くまで営業しています。","Toko ini buka sampai larut malam.","medium"],["n363","現金","げんきん","uang tunai","支払いは現金のみです。","Pembayaran hanya dengan uang tunai.","medium"],["n364","給料","きゅうりょう","gaji","毎月二十五日に給料が出ます。","Setiap bulan tanggal dua puluh lima gaji turun.","medium"],["n365","貯金","ちょきん","tabungan, menabung","将来のために貯金しています。","Menabung untuk masa depan.","medium"],["n366","家賃","やちん","biaya sewa rumah/kos","このアパートは家賃が安いです。","Apartemen ini biaya sewanya murah.","medium"],["n367","道具","どうぐ","alat, perkakas","仕事に使う道具を片付けました。","Merapikan alat yang dipakai untuk bekerja.","medium"],["n368","材料","ざいりょう","bahan-bahan (masakan/baku)","カレーの材料を買ってきました。","Membeli bahan-bahan untuk membuat kari.","medium"],["n369","機械","きかい","mesin","工場の機械が止まりました。","Mesin pabrik berhenti.","medium"],["n370","故障","こしょう","kerusakan (mesin/alat)","エアコンが故障してしまいました。","AC-nya mengalami kerusakan.","medium"],["n371","修理","しゅうり","perbaikan, servis","時計を修理に出しました。","Membawa jam ke tempat servis.","medium"],["n372","確認","かくにん","konfirmasi, pengecekan","メールの内容を確認してください。","Tolong periksa/konfirmasi isi emailnya.","medium"],["n373","変更","へんこう","perubahan","住所変更の手続きをしました。","Mengurus prosedur perubahan alamat.","medium"],["n374","遅刻","ちこく","terlambat (datang)","電車が遅れて遅刻しました。","Terlambat datang karena keretanya telat.","medium"],["n375","休憩","きゅうけい","istirahat (sela kerja)","十分間休憩しましょう。","Mari istirahat selama sepuluh menit.","medium"],["n376","募集","ぼしゅう","lowongan, perekrutan","アルバイトを募集しています。","Sedang membuka lowongan kerja paruh waktu.","medium"],["n377","面接","めんせつ","wawancara (interview)","明日、会社の面接があります。","Besok ada wawancara perusahaan.","medium"],["n378","書類","しょるい","dokumen, berkas","大切な書類をなくさないでください。","Tolong jangan sampai menghilangkan dokumen penting.","medium"],["n379","契約","けいやく","kontrak","アパートの契約を更新しました。","Memperbarui kontrak apartemen.","medium"],["n380","許可","きょか","izin","先生の許可をもらいました。","Sudah mendapat izin dari guru.","medium"],["n381","保険","ほけん","asuransi","健康保険に入っています。","Terdaftar dalam asuransi kesehatan.","medium"],["n382","税金","ぜいきん","pajak","税金を払わなければなりません。","Harus membayar pajak.","medium"],["n383","非常口","ひじょうぐち","pintu darurat","非常口の位置を確認しました。","Memastikan posisi pintu darurat.","medium"],["n384","薬局","やっきょく","apotek","薬局で風邪薬を買いました。","Membeli obat flu di apotek.","medium"],["n385","注射","ちゅうしゃ","suntikan","病院で注射をしてもらいました。","Disuntik di rumah sakit.","medium"],["n386","熱","ねつ","demam, suhu panas","朝から熱があります。","Sejak pagi mengalami demam.","medium"],["n387","夫婦","ふうふ","pasangan suami istri","あの二人は仲がいい夫婦です。","Mereka berdua adalah pasangan suami istri yang rukun.","medium"],["n388","姉妹","しまい","saudara perempuan","彼女には姉妹が二人います。","Dia punya dua saudara perempuan.","medium"],["n389","先輩","せんぱい","senior","会社の先輩が仕事を教えてくれました。","Senior di kantor mengajari pekerjaan.","medium"],["n390","後輩","こうはい","junior","後輩と一緒に昼ご飯を食べました。","Makan siang bersama junior.","medium"],["n391","上司","じょうし","atasan","上司に相談してから決めます。","Memutuskan setelah berkonsultasi dengan atasan.","medium"],["n392","田舎","いなか","kampung halaman, pedesaan","夏休みに田舎へ帰ります。","Pulang ke kampung saat liburan musim panas.","medium"],["n393","景色","けしき","pemandangan","窓からきれいな景色が見えます。","Terlihat pemandangan indah dari jendela.","medium"],["n394","森","もり","hutan lebat","森の中を散歩しました。","Berjalan-jalan di dalam hutan.","medium"],["n395","林","はやし","hutan kecil, pepohonan","家の近くに林があります。","Ada hutan kecil di dekat rumah.","medium"],["n396","池","いけ","kolam (alami/taman)","公園の池に魚がいます。","Di kolam taman ada ikan.","medium"],["n397","石","いし","batu","道に大きい石がありました。","Ada batu besar di jalan.","medium"],["n398","草","くさ","rumput","庭の草を抜きました。","Mencabut rumput di halaman.","medium"],["n399","鳥","とり","burung, unggas","木の上で鳥が鳴いています。","Burung sedang berkicau di atas pohon.","medium"],["n400","犬","いぬ","anjing","毎朝、犬の散歩をします。","Setiap pagi mengajak anjing jalan-jalan.","medium"],["n401","牛","うし","sapi","牧場に牛がたくさんいます。","Di peternakan ada banyak sapi.","medium"],["n402","晴れ","はれ","cerah (cuaca)","明日の天気は晴れです。","Cuaca besok cerah.","medium"],["n403","雪","ゆき","salju","外は雪が降っています。","Di luar sedang turun salju.","medium"],["n404","温度","おんど","suhu, temperatur","部屋の温度を下げました。","Menurunkan suhu ruangan.","medium"],["n405","祝日","しゅくじつ","hari libur nasional","来週の月曜日は祝日です。","Senin minggu depan adalah hari libur nasional.","medium"],["n406","連休","れんきゅう","libur panjang berurutan","連休はどこかへ出かけますか。","Apakah saat libur panjang akan pergi ke suatu tempat?","medium"],["n407","誕生日","たんじょうび","hari ulang tahun","友達の誕生日にケーキを買いました。","Membeli kue di hari ulang tahun teman.","medium"],["n408","お祝い","おいわい","perayaan, hadiah selamat","結婚のお祝いを贈りました。","Memberikan hadiah perayaan pernikahan.","medium"],["n409","留守","るす","tidak ada di rumah","電話したけれど留守でした。","Sudah menelepon tetapi sedang tidak ada di rumah.","medium"],["n410","提出","ていしゅつ","pengumpulan, penyerahan","レポートは金曜日までに提出してください。","Tolong kumpulkan laporan paling lambat hari Jumat.","medium"],["n411","記入","きにゅう","pengisian (formulir)","ここに名前と住所を記入してください。","Silakan isi nama dan alamat di sini.","medium"],["n412","検索","けんさく","pencarian (internet/data)","わからない言葉はネットで検索します。","Kosakata yang tidak dimengerti dicari di internet.","medium"],["n413","保存","ほぞん","penyimpanan (data/makanan)","ファイルを忘れずに保存してください。","Tolong simpan file-nya jangan sampai lupa.","medium"],["n414","送信","そうしん","pengiriman (pesan/data)","メッセージを送信しました。","Sudah mengirim pesan.","medium"],["n415","画面","がめん","layar (HP/monitor)","スマホの画面が割れてしまいました。","Layar HP retak/pecah.","medium"],["n416","充電","じゅうでん","pengisian daya (cas baterai)","スマホのバッテリーを充電します。","Mengisi daya baterai HP.","medium"],["n417","電源","でんげん","daya listrik, tombol power","映画館ではスマホの電源を切ります。","Di bioskop mematikan daya HP.","medium"],["n418","秘密","ひみつ","rahasia","この話は秘密にしてください。","Tolong rahasiakan pembicaraan ini.","medium"],["n419","順番","じゅんばん","giliran, urutan","順番に並んでお待ちください。","Silakan mengantre dan menunggu sesuai urutan.","medium"],["n420","絶対","ぜったい","pasti, mutlak","明日は絶対に遅れないでください。","Besok tolong jangan sampai terlambat.","medium"],["n499","招待","しょうたい","undangan","パーティーに友達を招待しました。","Mengundang teman ke pesta.","medium"],["n500","引っ越し","ひっこし","pindahan rumah","来月、新しいアパートへ引っ越しをします。","Bulan depan akan pindah ke apartemen baru.","medium"],["n21","休暇","きゅうか","liburan, cuti","休暇を取って帰国しました。","Mengambil cuti lalu pulang ke negara asal.","hard"],["n23","風邪","かぜ","flu","風邪をひきました。","Terkena flu.","hard"],["n25","怪我","けが","cedera, luka","転んで怪我をしました。","Jatuh dan cedera.","hard"],["n73","洗濯","せんたく","cucian","毎日洗濯をします。","Mencuci setiap hari.","hard"],["n79","眼鏡","めがね","kacamata","眼鏡をかけています。","Memakai kacamata.","hard"],["n80","傘","かさ","payung","傘を忘れました。","Lupa bawa payung.","hard"],["n81","鍵","かぎ","kunci","鍵をなくしました。","Kehilangan kunci.","hard"],["n82","財布","さいふ","dompet","財布を落としました。","Dompetnya terjatuh (hilang).","hard"],["n114","泥棒","どろぼう","pencuri","泥棒に入られました。","Kemasukan pencuri.","hard"],["n135","港","みなと","pelabuhan","港に船が着きました。","Kapal tiba di pelabuhan.","hard"],["n136","湖","みずうみ","danau","湖でボートに乗りました。","Naik perahu di danau.","hard"],["n140","曇り","くもり","mendung","明日は曇りです。","Besok mendung.","hard"],["n421","脱ぐ","ぬぐ","melepas (baju/sepatu)","家に入る前に靴を脱ぎます。","Melepas sepatu sebelum masuk ke rumah.","hard"],["n422","驚く","おどろく","terkejut, kaget","大きな音がして驚きました。","Terkejut karena terdengar suara keras.","hard"],["n423","壊れる","こわれる","rusak (benda)","古い洗濯機が壊れました。","Mesin cuci lama sudah rusak.","hard"],["n424","壊す","こわす","merusak","弟がおもちゃを壊してしまいました。","Adik laki-laki tidak sengaja merusak mainan.","hard"],["n425","汚れる","よごれる","menjadi kotor","雨で靴が汚れました。","Sepatu menjadi kotor karena hujan.","hard"],["n426","沸く","わく","mendidih","お湯が沸きましたよ。","Air panasnya sudah mendidih lho.","hard"],["n427","乾く","かわく","mengering","風が吹いて洗濯物がすぐ乾きました。","Karena angin bertiup, cucian cepat kering.","hard"],["n428","踊る","おどる","menari","祭りでみんなと一緒に踊りました。","Menari bersama semuanya di festival.","hard"],["n429","褒める","ほめる","memuji","先生に発音を褒められました。","Dipuji pelafalannya oleh guru.","hard"],["n430","叱る","しかる","memarahi, menegur","子供が悪いことをした時は叱ります。","Ketika anak berbuat salah, kita menegurnya.","hard"],["n431","誘う","さそう","mengajak","友達を映画に誘いました。","Mengajak teman menonton film.","hard"],["n432","滑る","すべる","terpeleset, licin","雪の日は道が滑りやすいです。","Saat hari bersalju jalannya mudah licin.","hard"],["n433","転ぶ","ころぶ","terjatuh, tersungkur","階段で転んでしまいました。","Terjatuh di tangga.","hard"],["n434","噛む","かむ","mengunyah, menggigit","よく噛んで食べてください。","Tolong kunyah dengan baik saat makan.","hard"],["n435","触る","さわる","menyentuh","展示品には触らないでください。","Tolong jangan menyentuh barang pameran.","hard"],["n436","塗る","ぬる","mengoleskan, mengecat","パンにバターを塗りました。","Mengoleskan mentega pada roti.","hard"],["n437","植える","うえる","menanam","庭にトマトの苗を植えました。","Menanam bibit tomat di halaman.","hard"],["n438","捨てる","すてる","membuang","ゴミはゴミ箱に捨ててください。","Tolong buang sampah pada tempat sampah.","hard"],["n439","拾う","ひろう","memungut","道で落ちていた財布を拾いました。","Memungut dompet yang terjatuh di jalan.","hard"],["n440","探す","さがす","mencari","新しいアパートを探しています。","Sedang mencari apartemen baru.","hard"],["n441","迷う","まよう","tersesat, bingung memilih","道に迷って遅れてしまいました。","Terlambat karena tersesat di jalan.","hard"],["n442","狭い","せまい","sempit","この部屋は少し狭いです。","Kamar ini sedikit sempit.","hard"],["n443","浅い","あさい","dangkal","このプールは浅いので子供でも安心です。","Kolam ini dangkal jadi aman untuk anak-anak.","hard"],["n444","薄い","うすい","tipis (benda pipih), hambar (rasa)","このスープは味が少し薄いです。","Sup ini rasanya agak hambar.","hard"],["n445","辛い","からい","pedas","インドの辛いカレーを食べました。","Makan kari India yang pedas.","hard"],["n446","眠い","ねむい","mengantuk","昨日はあまり寝ていないので眠いです。","Mengantuk karena kemarin kurang tidur.","hard"],["n447","怖い","こわい","takut, menyeramkan","暗い夜道は一人で歩くと怖いです。","Jalan malam yang gelap menyeramkan kalau jalan sendirian.","hard"],["n448","嬉しい","うれしい","senang, bahagia","試験に合格して本当に嬉しいです。","Sangat senang karena lulus ujian.","hard"],["n449","寂しい","さびしい","kesepian, sepi","一人で暮らすのは時々寂しいです。","Tinggal sendirian kadang terasa sepi.","hard"],["n450","厳しい","きびしい","tegas, ketat, keras","うちの会社の規則は厳しいです。","Peraturan di perusahaan kami ketat.","hard"],["n451","汚い","きたない","kotor, berantakan","手が汚いので洗ってきます。","Karena tangan kotor saya mau mencucinya dulu.","hard"],["n452","珍しい","めずらしい","langka, jarang ada","これはとても珍しい花です。","Ini adalah bunga yang sangat langka.","hard"],["n453","素晴らしい","すばらしい","luar biasa, mengagumkan","素晴らしい景色に感動しました。","Terharu melihat pemandangan yang luar biasa.","hard"],["n454","恥ずかしい","はずかしい","malu","みんなの前で歌うのは恥ずかしいです。","Malu rasanya bernyanyi di depan semua orang.","hard"],["n455","柔らかい","やわらかい","empuk, lembut, lunak","このお肉はとても柔らかいです。","Daging ini sangat empuk.","hard"],["n456","硬い","かたい","keras, kaku","このパンは少し硬いです。","Roti ini agak keras.","hard"],["n457","丁寧","ていねい","sopan, teliti, rapi","彼はいつも丁寧な言葉で話します。","Dia selalu berbicara dengan bahasa yang sopan.","hard"],["n458","複雑","ふくざつ","rumit, kompleks","東京の電車の路線は複雑です。","Jalur kereta di Tokyo rumit.","hard"],["n459","挨拶","あいさつ","salam, sapaan","朝、近所の人に挨拶をしました。","Pagi hari memberi salam kepada tetangga.","hard"],["n460","弁当","べんとう","bento (bekal makanan)","毎日自分で弁当を作っています。","Setiap hari membuat bekal sendiri.","hard"],["n461","お土産","おみやげ","oleh-oleh","旅行でお土産をたくさん買いました。","Membeli banyak oleh-oleh saat jalan-jalan.","hard"],["n462","冷蔵庫","れいぞうこ","kulkas, lemari es","買ってきた牛乳を冷蔵庫に入れました。","Memasukkan susu yang baru dibeli ke kulkas.","hard"],["n463","暖房","だんぼう","pemanas ruangan","寒いので暖房をつけました。","Menyalakan pemanas ruangan karena dingin.","hard"],["n464","冷房","れいぼう","pendingin ruangan (AC)","夏は冷房がないと眠れません。","Saat musim panas tidak bisa tidur kalau tanpa AC.","hard"],["n465","玄関","げんかん","area pintu masuk rumah (genkan)","玄関に靴を並べてください。","Tolong rapikan sepatu di genkan.","hard"],["n466","屋根","やね","atap","赤い屋根の家が私の家です。","Rumah beratap merah itu adalah rumah saya.","hard"],["n467","壁","かべ","dinding, tembok","壁にカレンダーをかけました。","Menggantung kalender di dinding.","hard"],["n468","床","ゆか","lantai","床に水をこぼしてしまいました。","Tidak sengaja menumpahkan air ke lantai.","hard"],["n469","机","つくえ","meja (belajar/kerja)","机の上に本が置いてあります。","Di atas meja ada buku yang diletakkan.","hard"],["n470","椅子","いす","kursi","どうぞこちらの椅子におかけください。","Silakan duduk di kursi sebelah sini.","hard"],["n471","鏡","かがみ","cermin","出かける前に鏡を見ます。","Melihat cermin sebelum berangkat keluar.","hard"],["n472","靴","くつ","sepatu","歩きやすい靴を買いました。","Membeli sepatu yang nyaman untuk berjalan.","hard"],["n473","帽子","ぼうし","topi","日差しが強いので帽子をかぶります。","Memakai topi karena sinar matahari terik.","hard"],["n474","袋","ふくろ","kantong, plastik","レジ袋は一枚五円です。","Kantong plastik harganya lima yen per lembar.","hard"],["n475","髪","かみ","rambut","美容院で髪を切りました。","Memotong rambut di salon.","hard"],["n476","涙","なみだ","air mata","嬉しくて涙が出ました。","Air mata keluar karena saking senangnya.","hard"],["n477","汗","あせ","keringat","運動してたくさん汗をかきました。","Berkeringat banyak setelah berolahraga.","hard"],["n478","咳","せき","batuk","昨日から咳が止まりません。","Sejak kemarin batuknya tidak berhenti.","hard"],["n479","血","ち","darah","転んで膝から血が出ました。","Jatuh lalu keluar darah dari lutut.","hard"],["n480","匂い","におい","bau, aroma","台所からいい匂いがします。","Tercium aroma sedap dari dapur.","hard"],["n481","看板","かんばん","papan nama toko, reklame","店の前に大きい看板があります。","Ada papan nama besar di depan toko.","hard"],["n482","領収書","りょうしゅうしょ","kuitansi, tanda terima","領収書をお願いします。","Tolong minta kuitansinya.","hard"],["n483","履歴書","りれきしょ","CV, daftar riwayat hidup","面接の前に履歴書を書きました。","Menulis CV sebelum wawancara.","hard"],["n484","印鑑","いんかん","stempel nama (hanko)","契約書に印鑑を押しました。","Membubuhkan stempel pada surat kontrak.","hard"],["n485","救急車","きゅうきゅうしゃ","ambulans","急に倒れたので救急車を呼びました。","Memanggil ambulans karena tiba-tiba pingsan.","hard"],["n486","渋滞","じゅうたい","kemacetan lalu lintas","事故で道路が渋滞しています。","Jalanan macet karena ada kecelakaan.","hard"],["n487","猫","ねこ","kucing","家で白い猫を飼っています。","Memelihara kucing putih di rumah.","hard"],["n488","豚","ぶた","babi","このラーメンには豚肉が入っています。","Di dalam ramen ini terdapat daging babi.","hard"],["n489","虫","むし","serangga","夏は山に虫が多いです。","Saat musim panas di gunung banyak serangga.","hard"],["n490","坂","さか","tanjakan, turunan (jalan miring)","駅の近くに急な坂があります。","Ada tanjakan curam di dekat stasiun.","hard"],["n491","砂","すな","pasir","靴の中に砂が入りました。","Pasir masuk ke dalam sepatu.","hard"],["n492","枝","えだ","ranting, dahan pohon","強い風で木の枝が折れました。","Dahan pohon patah karena angin kencang.","hard"],["n493","根","ね","akar","この木は根が深く伸びています。","Pohon ini akarnya tumbuh menjalar dalam.","hard"],["n494","種","たね","biji, benih","鉢に花の種をまきました。","Menabur benih bunga di pot.","hard"],["n495","雷","かみなり","petir, guntur","急に雷が鳴り始めました。","Tiba-tiba petir mulai bergemuruh.","hard"],["n496","霧","きり","kabut","朝は深い霧が出ていました。","Pagi hari turun kabut tebal.","hard"],["n497","冗談","じょうだん","candaan, gurauan","ただの冗談ですから怒らないでください。","Tolong jangan marah karena itu hanya candaan.","hard"],["n498","嘘","うそ","bohong, dusta","嘘をついてはいけません。","Tidak boleh berbohong.","hard"]].map(([id,k,r,m,ex,exi,dif]) => ({id,k,r,m,ex,exi,lv:'N4',dif}));
+
+const $ = id => document.getElementById(id);
+const LS_KEY = 'n4kanji_mastered_v1';
+const HARD_KEY = 'n4kanji_hard_v1';
+
+const LEVELS = {
+  all:    {label:'Semua', desc:'Semua kanji, diurutkan dari kanji yang paling sering muncul dan umum.'},
+  easy:   {label:'Easy',   cls:'lv-easy',   color:'var(--green)',  desc:'Kanji yang sering muncul dan sangat umum.'},
+  medium: {label:'Medium', cls:'lv-medium', color:'var(--orange)', desc:'Kanji yang lumayan sering muncul.'},
+  hard:   {label:'Hard',   cls:'lv-hard',   color:'var(--red)',    desc:'Kanji yang jarang muncul.'}
+};
+const LEVEL_KEYS = ['easy','medium','hard'];
+let levelFilter = 'all';
+
+function safeLoadSet(key){
+  try {
+    const raw = localStorage.getItem(key);
+    if(!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    if(!Array.isArray(parsed)) return new Set();
+    const validIds = new Set(KANJI.map(it => it.id));
+    return new Set(parsed.filter(id => typeof id === 'string' && validIds.has(id)));
+  } catch(e) { return new Set(); }
+}
+let mastered = safeLoadSet(LS_KEY);
+let hardSet = safeLoadSet(HARD_KEY);
+const saveMastered = () => {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify([...mastered]));
+    return true;
+  } catch(e) { return false; }
+};
+const saveHard = () => {
+  try {
+    localStorage.setItem(HARD_KEY, JSON.stringify([...hardSet]));
+    return true;
+  } catch(e) { return false; }
+};
+
+let hardMode = false, shuffleOn = false, hideMastered = false;
+let order = [], pos = 0, flipped = false, sessionHard = new Set(), sessionNewMaster = 0;
+
+function pool(){ return KANJI.map((_, i) => i).filter(i => levelFilter === 'all' || KANJI[i].dif === levelFilter); }
+function cardPool(){ return pool().filter(i => (!hideMastered || !mastered.has(KANJI[i].id)) && (!hardMode || hardSet.has(KANJI[i].id))); }
+
+function shuffled(arr){
+  const a = arr.slice();
+  for(let i = a.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function buildOrder(indices){
+  order = shuffleOn ? shuffled(indices) : indices.slice();
+  pos = 0; flipped = false; sessionNewMaster = 0;
+  $('fcDone').hidden = true; $('flashWrap').style.display = ''; $('fcActions').style.display = '';
+  renderCard();
+}
+
+function renderCard(){
+  const total = order.length;
+  if(pos >= total){ endSession(); return; }
+  const item = KANJI[order[pos]];
+  flipped = false;
+  $('flashcard').classList.remove('flip');
+  $('cardKanji').textContent = item.k;
+  $('cardReading').textContent = item.r;
+  $('cardMeaning').textContent = item.m;
+  $('cardExample').textContent = item.ex;
+  $('cardExampleId').textContent = item.exi;
+  const badge = $('cardLevel');
+  badge.textContent = LEVELS[item.dif].label + ' · N4';
+  badge.className = 'lvl ' + LEVELS[item.dif].cls;
+  $('cardCounter').textContent = 'Kartu ' + (pos + 1) + ' dari ' + total;
+  $('cardBar').style.width = (pos / total * 100) + '%';
+  $('btnPrev').disabled = pos <= 0;
+  updateForgetBtn(); updateHardBtn();
+}
+
+function endSession(){
+  $('flashWrap').style.display = 'none'; $('fcActions').style.display = 'none'; $('fcDone').hidden = false;
+  $('cardBar').style.width = '100%';
+  $('doneSummary').textContent = order.length === 0
+    ? (hardMode ? 'Belum ada kanji sulit di level ini' : 'Semua kanji di level ini sudah hafal 🎉')
+    : order.length + ' kartu diulas · ' + sessionNewMaster + ' hafal baru · ' + sessionHard.size + ' ditandai sulit';
+  $('btnHardOnly').hidden = sessionHard.size === 0;
+  $('hardCount').textContent = sessionHard.size;
+  updateForgetBtn(); updateHardBtn();
+}
+
+function flip(){ flipped = !flipped; $('flashcard').classList.toggle('flip', flipped); }
+
+function updatePill(){
+  const idx = pool(), mc = idx.filter(i => mastered.has(KANJI[i].id)).length;
+  $('mCount').textContent = mc; $('btnResetAll').disabled = mc === 0; $('mTotal').textContent = idx.length;
+}
+
+function renderChips(){
+  const keys = ['all', ...LEVEL_KEYS];
+  $('levelChips').innerHTML = keys.map(key => {
+    const n = key === 'all' ? KANJI.length : KANJI.filter(it => it.dif === key).length;
+    const dot = key === 'all' ? '' : '<span class="dot" style="background:' + LEVELS[key].color + '"></span>';
+    return '<button class="chip' + (levelFilter === key ? ' active' : '') + '" data-lv="' + key + '" role="tab">' + dot + LEVELS[key].label + ' <span class="cnt">' + n + '</span></button>';
+  }).join('');
+  $('levelDesc').textContent = LEVELS[levelFilter].desc;
+}
+
+$('levelChips').addEventListener('click', e => {
+  const chip = e.target.closest('.chip');
+  if(!chip || chip.dataset.lv === levelFilter) return;
+  levelFilter = chip.dataset.lv; sessionHard = new Set();
+  renderChips(); updatePill(); renderList($('kanjiSearch').value); buildOrder(cardPool());
+  if(!$('panelQuiz').hidden) enterQuizSetup();
+});
+
+$('flashcard').addEventListener('click', flip);
+$('flashcard').addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); flip(); } });
+
+$('btnHafal').addEventListener('click', () => {
+  const item = KANJI[order[pos]];
+  if(!mastered.has(item.id)){ mastered.add(item.id); sessionNewMaster++; saveMastered(); updatePill(); }
+  if(hardSet.delete(item.id)) saveHard();
+  pos++; renderCard();
+});
+$('btnPrev').addEventListener('click', () => { if(pos > 0){ pos--; renderCard(); } });
+$('btnUlangi').addEventListener('click', () => { pos++; renderCard(); });
+$('btnSulit').addEventListener('click', () => {
+  sessionHard.add(order[pos]); hardSet.add(KANJI[order[pos]].id); saveHard(); pos++; renderCard();
+});
+
+function updateHardBtn(){
+  const n = pool().filter(i => hardSet.has(KANJI[i].id)).length, b = $('btnHardMode');
+  b.textContent = '⚠ Kartu sulit (' + n + ')' + (hardMode ? ': nyala' : '');
+  b.classList.toggle('on', hardMode); b.disabled = !hardMode && n === 0;
+  const cur = KANJI[order[pos]];
+  $('btnUnhard').disabled = !cur || !hardSet.has(cur.id);
+  $('btnClearHard').disabled = n === 0;
+}
+
+$('btnUnhard').addEventListener('click', () => {
+  const cur = KANJI[order[pos]];
+  if(!cur || !hardSet.has(cur.id)) return;
+  hardSet.delete(cur.id); sessionHard.delete(order[pos]); saveHard(); updateHardBtn();
+});
+
+function confirmTap(btn, label, action){
+  const armedText = levelFilter === 'all' ? 'Yakin? Ketuk lagi' : 'Yakin? (level ' + LEVELS[levelFilter].label + ') ketuk lagi';
+  if(btn.dataset.armed){ clearTimeout(btn._t); delete btn.dataset.armed; btn.textContent = label; action(); return; }
+  btn.dataset.armed = '1'; btn.textContent = armedText;
+  btn._t = setTimeout(() => { delete btn.dataset.armed; btn.textContent = label; }, 3000);
+}
+
+$('btnClearHard').addEventListener('click', () => {
+  confirmTap($('btnClearHard'), '🗑 Hapus semua sulit', () => {
+    pool().forEach(i => hardSet.delete(KANJI[i].id)); sessionHard = new Set(); saveHard(); updateHardBtn();
+  });
+});
+$('btnHardMode').addEventListener('click', () => { hardMode = !hardMode; sessionHard = new Set(); buildOrder(cardPool()); });
+function updateForgetBtn(){ const item = KANJI[order[pos]]; $('btnForget').disabled = !item || !mastered.has(item.id); }
+$('btnForget').addEventListener('click', () => {
+  const item = KANJI[order[pos]];
+  if(!item || !mastered.has(item.id)) return;
+  mastered.delete(item.id); saveMastered(); updatePill(); renderList($('kanjiSearch').value); updateForgetBtn();
+});
+$('btnResetAll').addEventListener('click', () => {
+  confirmTap($('btnResetAll'), '🗑 Lupakan semua hafalan', () => {
+    pool().forEach(i => mastered.delete(KANJI[i].id)); saveMastered(); updatePill(); renderList($('kanjiSearch').value); updateForgetBtn();
+  });
+});
+$('btnHideMastered').addEventListener('click', () => {
+  hideMastered = !hideMastered;
+  $('btnHideMastered').textContent = '🙈 Sembunyikan hafal: ' + (hideMastered ? 'nyala' : 'mati');
+  $('btnHideMastered').classList.toggle('on', hideMastered);
+  sessionHard = new Set(); buildOrder(cardPool());
+});
+$('btnShuffle').addEventListener('click', () => {
+  shuffleOn = !shuffleOn;
+  $('btnShuffle').textContent = '🔀 Acak: ' + (shuffleOn ? 'nyala' : 'mati');
+  $('btnShuffle').classList.toggle('on', shuffleOn);
+  sessionHard = new Set(); buildOrder(cardPool());
+});
+$('btnRestart').addEventListener('click', () => { sessionHard = new Set(); buildOrder(cardPool()); });
+$('btnHardOnly').addEventListener('click', () => { const hardIdx = [...sessionHard]; sessionHard = new Set(); buildOrder(hardIdx); });
+
+function renderList(q){
+  q = (q || '').trim().toLowerCase();
+  const items = KANJI.filter(it => (levelFilter === 'all' || it.dif === levelFilter) &&
+    (!q || it.k.includes(q) || it.r.includes(q) || it.m.toLowerCase().includes(q) || it.exi.toLowerCase().includes(q)));
+  const listEl = $('kanjiList');
+  if(!items.length){
+    listEl.innerHTML = '<div class="empty">Tidak ada hasil untuk "' + q.replace(/[<>&"]/g, '') + '".</div>';
+    return;
+  }
+  listEl.innerHTML = items.map(it =>
+    '<div class="item" data-id="' + it.id + '"><div class="top"><div class="k">' + it.k + '</div>' +
+    '<div class="info"><b>' + it.r + ' <button type="button" class="tts-inline-btn" data-speak="' + it.r + '">🔊</button></b><span>' + it.m + '</span></div>' +
+    '<div class="tags"><span class="tag ' + LEVELS[it.dif].cls + '">' + LEVELS[it.dif].label + '</span>' +
+    (mastered.has(it.id) ? '<span class="tag green">✓ hafal</span>' : '') + '</div></div>' +
+    '<div class="ex">' + it.ex + ' <button type="button" class="tts-inline-btn" data-speak="' + it.ex + '">🔊 Kalimat</button><div class="id">' + it.exi + '</div></div></div>'
+  ).join('');
+}
+$('kanjiSearch').addEventListener('input', e => renderList(e.target.value));
+$('kanjiList').addEventListener('click', e => {
+  const speakBtn = e.target.closest('[data-speak]');
+  if(speakBtn){ e.stopPropagation(); speakJP(speakBtn.dataset.speak); return; }
+  const item = e.target.closest('.item');
+  if(item) item.classList.toggle('open');
+});
+
+/* ================= MORFOLOGI & KONJUGASI KATA (UNTUK KUIS KALIMAT) ================= */
+const NOUN_EXCEPTIONS = new Set(['答え','気持ち','昼休み','祭り','晴れ','お祝い','引っ越し','曇り','匂い','お土産']);
+const NA_ADJECTIVES = new Set(['安全','親切','便利','不便','元気','有名','特別','大切','大事','必要','自由','安心','心配','十分','危険','簡単','無理','残念','熱心','丁寧','複雑']);
+const SURU_NOUNS = new Set(['運動','予習','練習','発表','案内','注文','運転','出発','到着','注意','参加','出席','欠席','相談','報告','残業','合格','失敗','成功','努力','卒業','復習','準備','出張','予約','両替','掃除','駐車','紹介','営業','貯金','故障','修理','確認','変更','遅刻','休憩','募集','契約','注射','提出','記入','検索','保存','送信','充電','招待','引っ越し','洗濯','挨拶']);
+const GODAN_RU = new Set([
+  '走る','帰る','知る','決まる','集まる','始まる','終わる','止まる','閉まる','乗る','通る','変わる',
+  '作る','売る','送る','取る','直る','治る','怒る','渡る','曲がる','戻る','減る','塗る','滑る',
+  '折る','切る','入る','要る','散る','祈る','参る','鳴る','降る'
+]);
+const I_MAP = {'う':'い','く':'き','ぐ':'ぎ','す':'し','つ':'ち','ぬ':'に','ぶ':'び','む':'み','る':'り'};
+const A_MAP = {'う':'わ','く':'か','ぐ':'が','す':'さ','つ':'た','ぬ':'な','ぶ':'ば','む':'ま','る':'ら'};
+
+function getWordMeta(it){
+  const k = it.k, r = it.r;
+  if(NOUN_EXCEPTIONS.has(k)) return { pos: 'noun', subPos: 'noun' };
+  if(k.endsWith('い')) return { pos: 'iadj', subPos: 'iadj' };
+  if(/[うくぐすつぬぶむる]$/.test(k)){
+    if(k.endsWith('る')){
+      const prev = r.length >= 2 ? r[r.length - 2] : '';
+      if(!GODAN_RU.has(k) && 'えけげせてねべめれいきぎしじちひびみり'.includes(prev)){
+        return { pos: 'ichidan', subPos: 'verb' };
+      }
+    }
+    return { pos: 'godan', subPos: 'verb' };
+  }
+  if(NA_ADJECTIVES.has(k)) return { pos: 'noun', subPos: 'naadj' };
+  if(SURU_NOUNS.has(k)) return { pos: 'noun', subPos: 'suru' };
+  return { pos: 'noun', subPos: 'noun' };
+}
+
+function conjugateWord(it, form){
+  const { pos } = getWordMeta(it);
+  const k = it.k, stem = k.slice(0, -1), last = k.slice(-1);
+  if(pos === 'ichidan'){
+    if(form === 'masu_stem') return stem;
+    if(form === 'masu') return stem + 'ます';
+    if(form === 'mashita') return stem + 'ました';
+    if(form === 'masen') return stem + 'ません';
+    if(form === 'mashou') return stem + 'ましょう';
+    if(form === 'te') return stem + 'て';
+    if(form === 'nai') return stem + 'ない';
+    if(form === 'passive_mashita') return stem + 'られました';
+    return k;
+  }
+  if(pos === 'godan'){
+    const iStem = stem + I_MAP[last], aStem = stem + A_MAP[last];
+    if(form === 'masu_stem') return iStem;
+    if(form === 'masu') return iStem + 'ます';
+    if(form === 'mashita') return iStem + 'ました';
+    if(form === 'masen') return iStem + 'ません';
+    if(form === 'mashou') return iStem + 'ましょう';
+    if(form === 'nai') return aStem + 'ない';
+    if(form === 'passive_mashita') return aStem + 'れました';
+    if(form === 'te'){
+      if('うつる'.includes(last)) return stem + 'って';
+      if('ぬぶむ'.includes(last)) return stem + 'んで';
+      if(last === 'く') return stem + 'いて';
+      if(last === 'ぐ') return stem + 'いで';
+      if(last === 'す') return stem + 'して';
+    }
+    return k;
+  }
+  if(pos === 'iadj'){
+    if(form === 'i_ku') return stem + 'く';
+    if(form === 'i_katta') return stem + 'かった';
+    return k;
+  }
+  return k;
+}
+
+function analyzeSentenceBlank(it){
+  const { pos, subPos } = getWordMeta(it);
+  const ex = it.ex;
+  if(pos === 'ichidan' || pos === 'godan'){
+    const forms = ['passive_mashita','mashita','masen','mashou','masu','te','nai','masu_stem','dict'];
+    for(const f of forms){
+      const surface = conjugateWord(it, f);
+      if(ex.includes(surface)){
+        return {
+          maskedEx: ex.replace(surface, '（　　）'),
+          targetSurface: surface,
+          form: f,
+          subPos
+        };
+      }
+    }
+  } else if(pos === 'iadj'){
+    const forms = ['i_katta','i_ku','i_dict'];
+    for(const f of forms){
+      const surface = conjugateWord(it, f);
+      if(ex.includes(surface)){
+        return {
+          maskedEx: ex.replace(surface, '（　　）'),
+          targetSurface: surface,
+          form: f,
+          subPos
+        };
+      }
+    }
+  }
+  return {
+    maskedEx: ex.replace(it.k, '（　　）'),
+    targetSurface: it.k,
+    form: 'dict',
+    subPos
+  };
+}
+
+/* ================= KUIS ABC MULTI-MODEL ================= */
+const QTYPES = {
+  k2r:  { key: 'k2r',  short: '漢→あ', label: 'Kanji → Hiragana', prompt: 'Pilih cara baca (hiragana) yang benar untuk:' },
+  k2m:  { key: 'k2m',  short: '漢→ID', label: 'Kanji → Arti',     prompt: 'Pilih arti yang tepat untuk:' },
+  m2k:  { key: 'm2k',  short: 'ID→漢', label: 'Arti → Kanji',     prompt: 'Pilih kanji yang artinya:' },
+  r2k:  { key: 'r2k',  short: 'あ→漢', label: 'Hiragana → Kanji', prompt: 'Pilih kanji yang dibaca:' },
+  ex2k: { key: 'ex2k', short: '📖→漢', label: 'Kalimat → Kanji',  prompt: 'Kanji mana yang melengkapi kalimat ini?' }
+};
+const CORE_4_KEYS = ['k2r', 'k2m', 'm2k', 'r2k'];
+const ALL_5_KEYS  = ['k2r', 'k2m', 'm2k', 'r2k', 'ex2k'];
+const ABC = ['A', 'B', 'C', 'D'];
+
+let quizTypeChoice = 'random';
+let quizQuestions = [];
+let quizPos = 0, quizWrong = [], quizRight = [], quizLocked = false;
+
+const dispOf = (it, key, exMeta) => {
+  if(key === 'k2r') return it.r;
+  if(key === 'k2m') return it.m;
+  if(key === 'ex2k' && exMeta) return conjugateWord(it, exMeta.form);
+  return it.k;
+};
+
+function getActiveTypeKeys(){
+  if(quizTypeChoice === 'random') return CORE_4_KEYS;
+  if(quizTypeChoice === 'random5') return ALL_5_KEYS;
+  return QTYPES[quizTypeChoice] ? [quizTypeChoice] : CORE_4_KEYS;
+}
+
+function buildQuizBank(){
+  const indices = pool(), keys = getActiveTypeKeys(), bank = [];
+  for(const idx of indices){
+    for(const typeKey of keys) bank.push({ kanjiIdx: idx, typeKey });
+  }
+  return bank;
+}
+
+function sharedKanji(a, b){
+  const isK = ch => /[一-龯]/.test(ch);
+  const A = new Set([...a].filter(isK)), B = new Set([...b].filter(isK));
+  let n = 0; A.forEach(ch => { if(B.has(ch)) n++; }); return n;
+}
+function kanaSim(a, b){
+  const grams = s => { const g = new Set(); for(let i = 0; i < s.length - 1; i++) g.add(s.slice(i, i + 2)); return g; };
+  const A = grams(a), B = grams(b);
+  let n = 0; A.forEach(x => { if(B.has(x)) n++; });
+  if(a[0] === b[0]) n += 0.75;
+  if(Math.abs(a.length - b.length) <= 1) n += 0.25;
+  return n;
+}
+function meaningSim(a, b){
+  const tok = s => s.toLowerCase().split(/[^a-z]+/).filter(w => w.length > 2);
+  const A = new Set(tok(a)), B = new Set(tok(b));
+  let n = 0; A.forEach(w => { if(B.has(w)) n++; }); return n;
+}
+
+function pickDistractors(item, key, count, exMeta){
+  const targetDisp = dispOf(item, key, exMeta);
+  const candidates = KANJI.filter(it => {
+    if(it.id === item.id) return false;
+    if(dispOf(it, key, exMeta) === targetDisp) return false;
+    if(key === 'r2k' && it.r === item.r) return false;
+    if((key === 'm2k' || key === 'k2m') && it.m.toLowerCase() === item.m.toLowerCase()) return false;
+    if((key === 'k2r' || key === 'k2m') && it.k === item.k) return false;
+    return true;
+  });
+
+  const scored = candidates.map(it => {
+    let s = 0;
+    if(key === 'k2r'){
+      s = sharedKanji(item.k, it.k) * 3 + kanaSim(item.r, it.r);
+    } else if(key === 'r2k'){
+      s = kanaSim(item.r, it.r) * 2.5 + sharedKanji(item.k, it.k) * 1.5;
+    } else if(key === 'm2k'){
+      s = meaningSim(item.m, it.m) * 3 + sharedKanji(item.k, it.k) * 1.5 + (it.dif === item.dif ? 0.5 : 0);
+    } else if(key === 'ex2k'){
+      const itMeta = getWordMeta(it);
+      const sameSubPos = itMeta.subPos === exMeta.subPos;
+      const sameBroadPos = (itMeta.subPos === 'verb') === (exMeta.subPos === 'verb') && (itMeta.subPos === 'iadj') === (exMeta.subPos === 'iadj');
+      s = (sameSubPos ? 10 : (sameBroadPos ? 6 : -10)) + sharedKanji(item.k, it.k) * 2 + kanaSim(item.r, it.r) + (it.dif === item.dif ? 0.5 : 0);
+    } else {
+      s = meaningSim(item.m, it.m) * 3 + (it.dif === item.dif ? 0.5 : 0) + kanaSim(item.r, it.r) * 0.25;
+    }
+    return { it, s: s + Math.random() * 0.6 };
+  }).sort((a, b) => b.s - a.s);
+
+  const seen = new Set([targetDisp]);
+  const out = [];
+  for(const { it } of scored){
+    const d = dispOf(it, key, exMeta);
+    if(seen.has(d)) continue;
+    seen.add(d);
+    out.push(it);
+    if(out.length === count) break;
+  }
+  return out;
+}
+
+function makeQuestion(item, typeKey){
+  const exMeta = typeKey === 'ex2k' ? analyzeSentenceBlank(item) : null;
+  const distractors = pickDistractors(item, typeKey, 3, exMeta);
+  const options = shuffled([item, ...distractors]).map(optItem => ({
+    item: optItem,
+    label: dispOf(optItem, typeKey, exMeta)
+  }));
+  return { item, type: typeKey, exMeta, options };
+}
+
+function enterQuizSetup(){
+  $('quizSetup').hidden = false; $('quizRun').hidden = true; $('quizResult').hidden = true;
+  document.querySelectorAll('#quizTypeGrid .quiz-type-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.qtype === quizTypeChoice);
+  });
+  const kanjiCnt = pool().length, modelCnt = getActiveTypeKeys().length, totalBank = kanjiCnt * modelCnt;
+  $('quizPoolInfo').textContent = 'Level ' + LEVELS[levelFilter].label + ' (' + kanjiCnt + ' kanji × ' + modelCnt + ' model = ' + totalBank.toLocaleString('id-ID') + ' soal unik)';
+  $('btnQuizAllBank').textContent = 'Semua (' + totalBank + ')';
+  $('quizCustomCount').max = totalBank;
+  $('quizCustomCount').placeholder = 'Atau ketik jumlah soal (1–' + totalBank + ')…';
+
+  const capped = [];
+  document.querySelectorAll('#quizSetup [data-count]').forEach(btn => {
+    if(btn.dataset.count === 'all'){ btn.disabled = totalBank === 0; return; }
+    const c = +btn.dataset.count;
+    btn.disabled = c > totalBank;
+    if(c > totalBank) capped.push(c);
+  });
+  $('quizCapNote').textContent = capped.length
+    ? 'Total bank soal pada filter ini adalah ' + totalBank + ' soal, sehingga opsi ' + capped.join(', ') + ' dinonaktifkan.'
+    : '';
+}
+
+$('quizTypeGrid').addEventListener('click', e => {
+  const btn = e.target.closest('.quiz-type-btn');
+  if(!btn || btn.dataset.qtype === quizTypeChoice) return;
+  quizTypeChoice = btn.dataset.qtype;
+  enterQuizSetup();
+});
+
+function startQuiz(requestedCount){
+  const bank = shuffled(buildQuizBank());
+  if(!bank.length) return;
+  const n = requestedCount === 'all' ? bank.length : Math.max(1, Math.min(Number(requestedCount) || 10, bank.length));
+  quizQuestions = bank.slice(0, n).map(entry => makeQuestion(KANJI[entry.kanjiIdx], entry.typeKey));
+  quizPos = 0; quizWrong = []; quizRight = []; quizLocked = false;
+  $('quizSetup').hidden = true; $('quizResult').hidden = true; $('quizRun').hidden = false;
+  renderQuizQ();
+}
+
+document.querySelectorAll('#quizSetup [data-count]').forEach(btn => {
+  btn.addEventListener('click', () => startQuiz(btn.dataset.count === 'all' ? 'all' : +btn.dataset.count));
+});
+$('btnStartCustomQuiz').addEventListener('click', () => {
+  const val = parseInt($('quizCustomCount').value, 10);
+  if(!val || val < 1){ $('quizCustomCount').focus(); return; }
+  startQuiz(val);
+});
+$('quizCustomCount').addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); $('btnStartCustomQuiz').click(); } });
+$('btnQuizFinishEarly').addEventListener('click', () => {
+  if(quizWrong.length + quizRight.length === 0){ enterQuizSetup(); return; }
+  showQuizResult();
+});
+
+function renderQuizQ(){
+  quizLocked = false;
+  const q = quizQuestions[quizPos], t = q.type, qInfo = QTYPES[t];
+  $('quizCounter').textContent = 'Soal ' + (quizPos + 1) + ' dari ' + quizQuestions.length;
+  $('quizModeBadge').textContent = qInfo.short + ' · ' + qInfo.label;
+  $('quizBar').style.width = (quizPos / quizQuestions.length * 100) + '%';
+  $('quizPrompt').textContent = qInfo.prompt;
+
+  const main = $('quizMain'), sub = $('quizSub');
+  main.className = 'quiz-main'; sub.textContent = '';
+
+  if(t === 'k2r' || t === 'k2m'){
+    main.textContent = q.item.k;
+  } else if(t === 'm2k'){
+    main.textContent = q.item.m; main.classList.add('meaning-prompt');
+  } else if(t === 'r2k'){
+    main.textContent = q.item.r; main.classList.add('reading');
+  } else if(t === 'ex2k'){
+    main.textContent = q.exMeta.maskedEx; main.classList.add('sentence-prompt');
+    sub.textContent = q.item.exi;
+  }
+
+  const box = $('quizOptions');
+  box.className = 'quiz-options mt16' + (t === 'k2m' ? '' : ' two');
+  box.innerHTML = '';
+
+  q.options.forEach((optObj, idx) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'opt';
+    const badge = document.createElement('span'); badge.className = 'abc-badge'; badge.textContent = ABC[idx];
+    const txt = document.createElement('span'); txt.className = 'abc-text'; txt.textContent = optObj.label;
+    b.appendChild(badge); b.appendChild(txt);
+    b.addEventListener('click', () => answerQuiz(b, optObj, q));
+    box.appendChild(b);
+  });
+}
+
+function answerQuiz(btn, optObj, q){
+  if(quizLocked) return;
+  quizLocked = true;
+  const box = $('quizOptions'), buttons = [...box.children];
+  buttons.forEach(b => { b.disabled = true; });
+  const correct = optObj.item.id === q.item.id;
+  buttons.forEach((b, i) => {
+    if(q.options[i].item.id === q.item.id) b.classList.add('correct');
+    else if(b !== btn) b.classList.add('dim');
+  });
+  if(!correct) btn.classList.add('wrong');
+  const rec = { no: quizPos + 1, item: q.item, type: q.type, exMeta: q.exMeta, chosen: optObj.item, chosenLabel: optObj.label };
+  (correct ? quizRight : quizWrong).push(rec);
+  setTimeout(() => {
+    quizPos++;
+    if(quizPos < quizQuestions.length) renderQuizQ();
+    else showQuizResult();
+  }, correct ? 420 : 850);
+}
+
+function reviewText(rec){
+  const it = rec.item, t = rec.type, ch = rec.chosen;
+  const tag = '<span class="qr-mode">' + QTYPES[t].label + '</span>';
+  if(t === 'k2r')
+    return tag + '<br><b class="k">' + it.k + '</b> — seharusnya <span class="right">' + it.r + '</span> (arti: "' + it.m + '").<br>Jawabanmu: <span class="you">' + ch.r + '</span> (= ' + ch.k + ', "' + ch.m + '")';
+  if(t === 'r2k')
+    return tag + '<br>Bacaan <b>' + it.r + '</b> — seharusnya <span class="right">' + it.k + '</span> (arti: "' + it.m + '").<br>Jawabanmu: <span class="you">' + ch.k + '</span> (dibaca ' + ch.r + ', "' + ch.m + '")';
+  if(t === 'm2k')
+    return tag + '<br>Arti <b>"' + it.m + '"</b> — seharusnya <span class="right">' + it.k + '</span> (' + it.r + ').<br>Jawabanmu: <span class="you">' + ch.k + '</span> (' + ch.r + ', "' + ch.m + '")';
+  if(t === 'ex2k'){
+    const rightAns = rec.exMeta ? rec.exMeta.targetSurface : it.k;
+    const baseNote = rightAns !== it.k ? ' [bentuk kamus: ' + it.k + ']' : '';
+    const chBaseNote = rec.chosenLabel !== ch.k ? ' [kamus: ' + ch.k + ']' : '';
+    return tag + '<br>Kalimat: <b>' + it.ex + '</b><br>Seharusnya: <span class="right">' + rightAns + '</span>' + baseNote + ' (' + it.r + ', "' + it.m + '").<br>Jawabanmu: <span class="you">' + rec.chosenLabel + '</span>' + chBaseNote + ' (' + ch.r + ', "' + ch.m + '")';
+  }
+  return tag + '<br><b class="k">' + it.k + '</b> (' + it.r + ') — arti <span class="right">"' + it.m + '"</span>.<br>Jawabanmu: <span class="you">"' + ch.m + '"</span> (= ' + ch.k + ')';
+}
+
+function showQuizResult(){
+  $('quizRun').hidden = true; $('quizResult').hidden = false;
+  const answered = quizRight.length + quizWrong.length, ok = quizRight.length;
+  const score = answered ? Math.round(ok / answered * 100) : 0;
+  $('quizScore').textContent = score;
+  const modeSummary = quizTypeChoice === 'random' ? 'Acak 4 Model Utama' : (quizTypeChoice === 'random5' ? 'Acak 5 Model (+Kalimat)' : QTYPES[quizTypeChoice].label);
+  $('quizScoreDetail').textContent = ok + ' benar · ' + quizWrong.length + ' salah (dari ' + answered + ' soal) · ' + modeSummary;
+  let emoji = '🔁', msg = 'Jangan menyerah — ulangi kartunya lalu coba lagi!';
+  if(score === 100){ emoji = '🏆'; msg = 'Sempurna! Semua benar.'; }
+  else if(score >= 80){ emoji = '🎉'; msg = 'Hebat! Sedikit lagi sempurna.'; }
+  else if(score >= 60){ emoji = '💪'; msg = 'Lumayan! Terus latihan ya.'; }
+  else if(score >= 40){ emoji = '📚'; msg = 'Masih perlu dipelajari lagi, semangat!'; }
+  $('quizEmoji').textContent = emoji; $('quizScoreMsg').textContent = msg;
+
+  const ww = $('quizWrongWrap');
+  if(quizWrong.length){
+    ww.hidden = false;
+    $('quizWrongList').innerHTML = quizWrong.map(r => '<div class="qr-item"><b>No. ' + r.no + '</b> ' + reviewText(r) + '</div>').join('');
+  } else ww.hidden = true;
+
+  const rw = $('quizRightWrap');
+  if(quizRight.length){
+    rw.hidden = false;
+    $('quizRightList').innerHTML = quizRight.map(r => {
+      const ansShow = (r.type === 'ex2k' && r.exMeta && r.exMeta.targetSurface !== r.item.k)
+        ? r.exMeta.targetSurface + ' (' + r.item.k + ')'
+        : r.item.k;
+      return '<div class="qr-item"><b>No. ' + r.no + '</b> <span class="qr-mode">' + QTYPES[r.type].short + '</span> · ✅ <b class="k">' + ansShow + '</b> ' + r.item.r + ' — ' + r.item.m + '</div>';
+    }).join('');
+  } else rw.hidden = true;
+}
+
+$('btnQuizAgain').addEventListener('click', enterQuizSetup);
+
+function switchTab(which){
+  const tabs = { card:['tabCard','panelCard'], list:['tabList','panelList'], quiz:['tabQuiz','panelQuiz'] };
+  Object.entries(tabs).forEach(([k, [t, p]]) => { $(t).classList.toggle('active', k === which); $(p).hidden = k !== which; });
+  if(which === 'list') renderList($('kanjiSearch').value);
+  if(which === 'quiz') enterQuizSetup();
+}
+$('tabCard').addEventListener('click', () => switchTab('card'));
+$('tabList').addEventListener('click', () => switchTab('list'));
+$('tabQuiz').addEventListener('click', () => switchTab('quiz'));
+
+let kbNav = false;
+document.addEventListener('keydown', e => { if(e.key === 'Tab') kbNav = true; }, true);
+document.addEventListener('pointerdown', () => { kbNav = false; }, true);
+function spaceFlips(t){
+  if(!t || t === $('flashcard')) return false;
+  if(t.tagName === 'BUTTON') return !kbNav;
+  return true;
+}
+document.addEventListener('keyup', e => {
+  if(!$('restoreModal').hidden) return;
+  if(e.key === ' ' && !$('panelCard').hidden && $('fcActions').style.display !== 'none' && spaceFlips(e.target)) e.preventDefault();
+});
+document.addEventListener('keydown', e => {
+  if(!$('restoreModal').hidden) return;
+  if(e.ctrlKey || e.metaKey || e.altKey) return;
+  const t = e.target, tag = t && t.tagName;
+  if(tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  const key = e.key;
+  if(!$('panelCard').hidden){
+    if($('fcActions').style.display === 'none') return;
+    if(key === ' '){ if(!spaceFlips(t)) return; e.preventDefault(); flip(); }
+    else if(key === 'ArrowLeft'){ e.preventDefault(); $('btnPrev').click(); }
+    else if(key === 'ArrowRight'){ e.preventDefault(); $('btnUlangi').click(); }
+    else if(key === 'h' || key === 'H') $('btnHafal').click();
+    else if(key === 's' || key === 'S') $('btnSulit').click();
+    else if(key === 'a' || key === 'A'){ e.preventDefault(); speakCurrentCard(false); }
+  } else if(!$('panelQuiz').hidden && !$('quizRun').hidden){
+    let optIdx = -1;
+    if(/^[1-4]$/.test(key)) optIdx = Number(key) - 1;
+    else if(/^[a-dA-D]$/.test(key)) optIdx = key.toUpperCase().charCodeAt(0) - 65;
+    if(optIdx >= 0){
+      const opt = $('quizOptions').querySelectorAll('.opt')[optIdx];
+      if(opt && !opt.disabled) opt.click();
+    }
+  }
+});
+
+/* ================= TTS & BACKUP/RESTORE ================= */
+let cachedVoices = [], fallbackAudio = null, activeUtterance = null;
+function loadVoices(){ if('speechSynthesis' in window) cachedVoices = window.speechSynthesis.getVoices() || []; }
+if('speechSynthesis' in window){ loadVoices(); if(window.speechSynthesis.onvoiceschanged !== undefined) window.speechSynthesis.onvoiceschanged = loadVoices; }
+
+function playOnlineTTSFallback(text){
+  try {
+    if(fallbackAudio){ fallbackAudio.pause(); fallbackAudio = null; }
+    fallbackAudio = new Audio('https://translate.googleapis.com/translate_tts?client=gtx&ie=UTF-8&tl=ja&dt=t&q=' + encodeURIComponent(text));
+    fallbackAudio.playbackRate = 0.95; fallbackAudio.play().catch(() => {});
+  } catch(e) {}
+}
+
+function speakJP(text){
+  if(!text) return;
+  if(!('speechSynthesis' in window)){ playOnlineTTSFallback(text); return; }
+  loadVoices();
+  const jpVoice = cachedVoices.find(v => v.lang && (v.lang.toLowerCase().includes('ja') || v.lang.toLowerCase().includes('jp')));
+  window.speechSynthesis.cancel();
+  if(window.speechSynthesis.paused) window.speechSynthesis.resume();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'ja-JP'; u.rate = 0.9; if(jpVoice) u.voice = jpVoice;
+  activeUtterance = u;
+  let started = false;
+  u.onstart = () => { started = true; };
+  u.onerror = () => { if(!started) playOnlineTTSFallback(text); };
+  setTimeout(() => {
+    window.speechSynthesis.speak(u);
+    if(!jpVoice) setTimeout(() => { if(!started && !window.speechSynthesis.speaking) playOnlineTTSFallback(text); }, 600);
+  }, 50);
+}
+
+function speakCurrentCard(useExample){
+  if(pos >= order.length) return;
+  const item = KANJI[order[pos]];
+  if(item) speakJP(useExample ? item.ex : item.r);
+}
+
+$('btnSpeakFront').addEventListener('click', e => { e.stopPropagation(); speakCurrentCard(false); });
+$('btnSpeakBack').addEventListener('click', e => { e.stopPropagation(); speakCurrentCard(false); });
+$('btnSpeakEx').addEventListener('click', e => { e.stopPropagation(); speakCurrentCard(true); });
+
+$('btnExportData').addEventListener('click', () => {
+  try {
+    const payload = { app: 'n4-kanji-kotoba', version: 1, exportedAt: new Date().toISOString(), mastered: [...mastered], hard: [...hardSet] };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'backup-kanji-n4-' + new Date().toISOString().slice(0, 10) + '.json';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  } catch(err) { alert('Gagal membuat file backup.'); }
+});
+let pendingRestore = null;
+let lastFocusedBeforeModal = null;
+
+function getModalFocusables(){
+  return [...$('restoreModal').querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')];
+}
+
+function openRestoreModal(){
+  lastFocusedBeforeModal = (document.activeElement && document.activeElement !== document.body && document.activeElement !== $('fileImportData'))
+    ? document.activeElement
+    : $('btnImportData');
+  $('restoreModal').hidden = false;
+  requestAnimationFrame(() => $('btnRestoreMerge').focus());
+}
+
+function closeRestoreModal(){
+  $('restoreModal').hidden = true;
+  pendingRestore = null;
+  const target = (lastFocusedBeforeModal && document.contains(lastFocusedBeforeModal))
+    ? lastFocusedBeforeModal
+    : $('btnImportData');
+  lastFocusedBeforeModal = null;
+  if(target && typeof target.focus === 'function') target.focus();
+}
+
+function commitProgressTransaction(nextMastered, nextHard){
+  const prevMastered = new Set(mastered);
+  const prevHard = new Set(hardSet);
+  let prevRawM = null, prevRawH = null;
+  try {
+    prevRawM = localStorage.getItem(LS_KEY);
+    prevRawH = localStorage.getItem(HARD_KEY);
+  } catch(e) {
+    return { ok: false, error: 'Penyimpanan browser (localStorage) tidak dapat diakses.' };
+  }
+
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify([...nextMastered]));
+    localStorage.setItem(HARD_KEY, JSON.stringify([...nextHard]));
+    mastered = nextMastered;
+    hardSet = nextHard;
+    return { ok: true };
+  } catch(err) {
+    /* Rollback atomik agar progres lama tidak pernah berubah atau setengah tertulis */
+    try {
+      if(prevRawM === null) localStorage.removeItem(LS_KEY);
+      else localStorage.setItem(LS_KEY, prevRawM);
+      if(prevRawH === null) localStorage.removeItem(HARD_KEY);
+      else localStorage.setItem(HARD_KEY, prevRawH);
+    } catch(rollbackErr) {}
+    mastered = prevMastered;
+    hardSet = prevHard;
+    return { ok: false, error: 'Gagal menyimpan ke penyimpanan browser (memori penuh atau diblokir). Progres lama tetap aman dan tidak berubah.' };
+  }
+}
+
+function applyRestore(mode){
+  if(!pendingRestore) return;
+  const { impMastered, impHard, rejectedIds, isEmptyBackup } = pendingRestore;
+
+  if(mode === 'replace' && isEmptyBackup && (mastered.size > 0 || hardSet.size > 0)){
+    const okConfirm = confirm(
+      'Peringatan: File backup ini kosong (0 hafal, 0 sulit).\n' +
+      'Menimpa progres akan menghapus ' + mastered.size + ' kanji hafal dan ' + hardSet.size + ' kanji sulit yang ada saat ini menjadi 0.\n\n' +
+      'Lanjutkan menimpa semua progres?'
+    );
+    if(!okConfirm) return;
+  }
+
+  let nextMastered, nextHard;
+  if(mode === 'merge'){
+    nextMastered = new Set(mastered);
+    nextHard = new Set(hardSet);
+    impMastered.forEach(id => {
+      nextMastered.add(id);
+      nextHard.delete(id);
+    });
+    impHard.forEach(id => {
+      if(!nextMastered.has(id)) nextHard.add(id);
+    });
+  } else {
+    nextMastered = new Set(impMastered);
+    nextHard = new Set(impHard.filter(id => !nextMastered.has(id)));
+  }
+
+  const tx = commitProgressTransaction(nextMastered, nextHard);
+  if(!tx.ok){
+    closeRestoreModal();
+    alert('Restore dibatalkan: ' + tx.error);
+    return;
+  }
+
+  sessionHard = new Set();
+  updatePill();
+  renderList($('kanjiSearch').value);
+  buildOrder(cardPool());
+  const labelMode = mode === 'merge' ? 'digabungkan' : 'ditimpa';
+  const rejectedNote = rejectedIds.length
+    ? '\n\nCatatan: ' + rejectedIds.length + ' ID data tidak dikenali diabaikan karena tidak cocok dengan database versi ini.'
+    : '';
+  closeRestoreModal();
+  alert('Progres berhasil ' + labelMode + ': ' + mastered.size + ' kanji hafal & ' + hardSet.size + ' kanji sulit.' + rejectedNote);
+}
+
+$('btnRestoreMerge').addEventListener('click', () => applyRestore('merge'));
+$('btnRestoreReplace').addEventListener('click', () => applyRestore('replace'));
+$('btnRestoreCancel').addEventListener('click', closeRestoreModal);
+$('restoreModal').addEventListener('click', e => {
+  if(e.target === $('restoreModal')) closeRestoreModal();
+});
+
+/* Focus trap & navigasi keyboard di dalam modal Restore */
+document.addEventListener('focusin', e => {
+  if(!$('restoreModal').hidden && !$('restoreModal').contains(e.target)){
+    e.stopPropagation();
+    const focusables = getModalFocusables();
+    if(focusables.length) focusables[0].focus();
+  }
+}, true);
+
+$('restoreModal').addEventListener('keydown', e => {
+  if($('restoreModal').hidden) return;
+  if(e.key === 'Escape'){
+    e.preventDefault();
+    e.stopPropagation();
+    closeRestoreModal();
+    return;
+  }
+  const focusables = getModalFocusables();
+  if(!focusables.length) return;
+  const idx = focusables.indexOf(document.activeElement);
+  if(e.key === 'Tab'){
+    e.preventDefault();
+    if(e.shiftKey){
+      const prevIdx = idx <= 0 ? focusables.length - 1 : idx - 1;
+      focusables[prevIdx].focus();
+    } else {
+      const nextIdx = (idx === -1 || idx >= focusables.length - 1) ? 0 : idx + 1;
+      focusables[nextIdx].focus();
+    }
+  } else if(e.key === 'ArrowDown' || e.key === 'ArrowRight'){
+    e.preventDefault();
+    const nextIdx = (idx === -1 || idx >= focusables.length - 1) ? 0 : idx + 1;
+    focusables[nextIdx].focus();
+  } else if(e.key === 'ArrowUp' || e.key === 'ArrowLeft'){
+    e.preventDefault();
+    const prevIdx = idx <= 0 ? focusables.length - 1 : idx - 1;
+    focusables[prevIdx].focus();
+  }
+});
+
+function parseLegacyListField(rawField, fieldLabel){
+  if(Array.isArray(rawField)) return rawField;
+  if(typeof rawField === 'string'){
+    let parsed;
+    try {
+      parsed = JSON.parse(rawField);
+    } catch(e) {
+      throw new Error('Format data backup lama pada "' + fieldLabel + '" rusak.');
+    }
+    if(!Array.isArray(parsed)){
+      throw new Error('Data backup lama pada "' + fieldLabel + '" harus berupa array.');
+    }
+    return parsed;
+  }
+  throw new Error('Struktur data backup lama pada "' + fieldLabel + '" tidak valid.');
+}
+
+function validateAndParseBackup(rawText){
+  let data;
+  try {
+    data = JSON.parse(rawText);
+  } catch(e) {
+    throw new Error('File bukan format JSON yang valid atau rusak.');
+  }
+  if(!data || typeof data !== 'object' || Array.isArray(data)){
+    throw new Error('Struktur JSON tidak valid (harus berupa objek backup).');
+  }
+
+  /* Jika metadata app/version disertakan, wajib cocok; jika tidak ada, cek format lama */
+  if(data.app !== undefined && data.app !== 'n4-kanji-kotoba'){
+    throw new Error('Identitas aplikasi tidak cocok (app: "' + String(data.app) + '").');
+  }
+  if(data.version !== undefined && data.version !== 1){
+    throw new Error('Versi skema backup tidak didukung (version: ' + String(data.version) + ').');
+  }
+
+  const hasModernMastered = data.mastered !== undefined;
+  const hasModernHard = data.hard !== undefined;
+  const hasLegacyMastered = Object.prototype.hasOwnProperty.call(data, LS_KEY);
+  const hasLegacyHard = Object.prototype.hasOwnProperty.call(data, HARD_KEY);
+
+  let rawMastered = null;
+  let rawHard = null;
+  let formatType = 'v1';
+
+  if(hasModernMastered || hasModernHard){
+    if(hasModernMastered && !Array.isArray(data.mastered)){
+      throw new Error('Struktur data "mastered" rusak (harus berupa array).');
+    }
+    if(hasModernHard && !Array.isArray(data.hard)){
+      throw new Error('Struktur data "hard" rusak (harus berupa array).');
+    }
+    rawMastered = hasModernMastered ? data.mastered : [];
+    rawHard = hasModernHard ? data.hard : [];
+    formatType = (data.app === 'n4-kanji-kotoba' && data.version === 1) ? 'v1' : 'legacy-plain';
+  } else if(hasLegacyMastered || hasLegacyHard){
+    rawMastered = hasLegacyMastered ? parseLegacyListField(data[LS_KEY], LS_KEY) : [];
+    rawHard = hasLegacyHard ? parseLegacyListField(data[HARD_KEY], HARD_KEY) : [];
+    formatType = 'legacy-storage';
+  } else {
+    throw new Error('File tidak memiliki struktur data backup kanji yang dikenali.');
+  }
+
+  const validIds = new Set(KANJI.map(it => it.id));
+  const impMasteredSet = new Set();
+  const impHardSet = new Set();
+  const rejectedSet = new Set();
+
+  const inspectList = (arr, targetSet) => {
+    for(const entry of arr){
+      if(typeof entry === 'string' && validIds.has(entry)){
+        targetSet.add(entry);
+      } else {
+        rejectedSet.add(typeof entry === 'string' ? entry : JSON.stringify(entry));
+      }
+    }
+  };
+
+  inspectList(rawMastered, impMasteredSet);
+  inspectList(rawHard, impHardSet);
+
+  const impMastered = [...impMasteredSet];
+  const impHard = [...impHardSet];
+  const rejectedIds = [...rejectedSet];
+
+  return {
+    formatType,
+    exportedAt: typeof data.exportedAt === 'string' ? data.exportedAt : '',
+    impMastered,
+    impHard,
+    rejectedIds,
+    isEmptyBackup: impMastered.length === 0 && impHard.length === 0
+  };
+}
+
+$('btnImportData').addEventListener('click', () => { $('fileImportData').value = ''; $('fileImportData').click(); });
+$('fileImportData').addEventListener('change', e => {
+  const file = e.target.files && e.target.files[0];
+  if(!file) return;
+  if(file.size > 1024 * 1024){
+    alert('Ukuran file terlalu besar (Maksimal 1MB).');
+    $('btnImportData').focus();
+    return;
+  }
+  const reader = new FileReader();
+  reader.onerror = () => {
+    alert('Gagal membaca file backup dari perangkat. Progres saat ini tetap aman dan tidak berubah.');
+    $('btnImportData').focus();
+  };
+  reader.onabort = () => {
+    alert('Pembacaan file backup dibatalkan. Progres saat ini tetap aman dan tidak berubah.');
+    $('btnImportData').focus();
+  };
+  reader.onload = ev => {
+    try {
+      const parsed = validateAndParseBackup(ev.target.result);
+      const { impMastered, impHard, rejectedIds, exportedAt, formatType, isEmptyBackup } = parsed;
+
+      const mergedMastered = new Set([...mastered, ...impMastered]);
+      const mergedHard = new Set([...hardSet, ...impHard].filter(id => !mergedMastered.has(id)));
+      const cleanImpHard = impHard.filter(id => !impMastered.includes(id));
+
+      pendingRestore = { impMastered, impHard, rejectedIds, isEmptyBackup };
+
+      $('rcCurrentVal').textContent = mastered.size + ' hafal · ' + hardSet.size + ' sulit';
+      $('rcBackupVal').textContent = impMastered.length + ' hafal · ' + cleanImpHard.length + ' sulit';
+      if(exportedAt.length >= 10){
+        $('rcBackupDate').textContent = 'Backup: ' + exportedAt.slice(0, 10);
+      } else if(formatType !== 'v1'){
+        $('rcBackupDate').textContent = 'Format backup versi lama';
+      } else {
+        $('rcBackupDate').textContent = file.name;
+      }
+
+      const emptyEl = $('rcEmptyWarn');
+      if(isEmptyBackup){
+        if(mastered.size > 0 || hardSet.size > 0){
+          emptyEl.className = 'rc-warn danger';
+          emptyEl.textContent = '🚨 Peringatan Backup Kosong: File ini berisi 0 kanji hafal dan 0 kanji sulit. Jika memilih "Timpa Semua", seluruh progres Anda saat ini (' + mastered.size + ' hafal, ' + hardSet.size + ' sulit) akan terhapus menjadi 0!';
+        } else {
+          emptyEl.className = 'rc-warn info';
+          emptyEl.textContent = 'ℹ File backup ini kosong (0 kanji hafal & 0 kanji sulit). Tidak ada data progres yang akan ditambahkan.';
+        }
+        emptyEl.hidden = false;
+      } else {
+        emptyEl.textContent = '';
+        emptyEl.hidden = true;
+      }
+
+      const warnEl = $('rcRejectedWarn');
+      if(rejectedIds.length > 0){
+        const sample = rejectedIds.slice(0, 5).join(', ');
+        const extra = rejectedIds.length > 5 ? ' (+' + (rejectedIds.length - 5) + ' lainnya)' : '';
+        warnEl.textContent = '⚠ ' + rejectedIds.length + ' ID data tidak dikenali (tidak cocok dengan database versi ini) dan akan diabaikan: ' + sample + extra;
+        warnEl.hidden = false;
+      } else {
+        warnEl.textContent = '';
+        warnEl.hidden = true;
+      }
+
+      $('rcMergePreview').textContent = '→ ' + mergedMastered.size + ' hafal, ' + mergedHard.size + ' sulit';
+      $('rcReplacePreview').textContent = '→ ' + impMastered.length + ' hafal, ' + cleanImpHard.length + ' sulit';
+
+      openRestoreModal();
+    } catch(err) {
+      alert('Restore ditolak: ' + (err && err.message ? err.message : 'File backup tidak valid atau rusak.') + '\nProgres saat ini tetap aman dan tidak berubah.');
+      $('btnImportData').focus();
+    }
+  };
+  reader.readAsText(file);
+});
+
+if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+
+renderChips(); updatePill(); renderList(''); buildOrder(cardPool());
+</script>
+</body>
+</html>
