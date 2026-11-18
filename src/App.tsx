@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth';
+import { doc, getDoc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { AppHeader } from './components/AppHeader';
 import { FlashcardPanel } from './components/FlashcardPanel';
 import { KanjiListPanel } from './components/KanjiListPanel';
@@ -7,14 +9,32 @@ import { RestoreModal, type PendingRestoreState } from './components/RestoreModa
 import { Sidebar } from './components/Sidebar';
 import { ToastBanner } from './components/ToastBanner';
 import { KANJI } from './data/kanjiData';
+import {
+  OperationType,
+  auth,
+  db,
+  getFirestoreUpgradeUrl,
+  googleProvider,
+  handleFirestoreError,
+  isFirestoreQuotaError,
+} from './firebase';
 import type { AppTab, LevelFilter, ToastMessage } from './types/kanji';
+import {
+  areSetsEqual,
+  buildUserProgressWriteData,
+  mergeProgressSets,
+  sanitizeProgressLists,
+} from './utils/progressSync';
 import { getPoolIndices, shuffled } from './utils/quizEngine';
 import {
   HARD_KEY,
   LS_KEY,
   buildBackupPayload,
+  clearStoredProgress,
   commitProgressTransaction,
+  getStoredOwnerUid,
   safeLoadSet,
+  setStoredOwnerUid,
   validateAndParseBackup,
 } from './utils/storage';
 import { speakJP } from './utils/tts';
@@ -25,6 +45,12 @@ export default function App() {
 
   const [mastered, setMastered] = useState<Set<string>>(() => safeLoadSet(LS_KEY));
   const [hardSet, setHardSet] = useState<Set<string>>(() => safeLoadSet(HARD_KEY));
+
+  const [user, setUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [fatalError, setFatalError] = useState<Error | null>(null);
 
   const [hardMode, setHardMode] = useState(false);
   const [shuffleOn, setShuffleOn] = useState(false);
@@ -44,6 +70,17 @@ export default function App() {
   const toastCounterRef = useRef(0);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const masteredRef = useRef(mastered);
+  masteredRef.current = mastered;
+  const hardRef = useRef(hardSet);
+  hardRef.current = hardSet;
+  const cloudDocExistsRef = useRef(false);
+  const justSignedInRef = useRef(false);
+
+  if (fatalError) {
+    throw fatalError;
+  }
+
   const showToast = useCallback(
     (tone: ToastMessage['tone'], title: string, detail?: string) => {
       toastCounterRef.current += 1;
@@ -62,6 +99,196 @@ export default function App() {
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
   }, []);
+
+  const reportFirestoreFailure = useCallback(
+    (err: unknown, op: OperationType, path: string) => {
+      if (isFirestoreQuotaError(err)) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const detail = msg.includes('Free daily read units per project')
+          ? `Kuota baca harian gratis Firestore habis. Upgrade database: ${getFirestoreUpgradeUrl()}`
+          : 'Kuota harian gratis Firestore tercapai dan akan direset besok. Progres tetap tersimpan di perangkat ini.';
+        showToast('warning', 'Batas Kuota Cloud Tercapai', detail);
+        return;
+      }
+
+      try {
+        handleFirestoreError(err, op, path);
+      } catch (wrapped) {
+        const errorObj = wrapped instanceof Error ? wrapped : new Error(String(wrapped));
+        const raw = err instanceof Error ? err.message : String(err);
+        if (raw.includes('Missing or insufficient permissions') || raw.includes('permission-denied')) {
+          setFatalError(errorObj);
+        } else {
+          showToast(
+            'warning',
+            'Sinkronisasi Cloud Tertunda',
+            'Progres tersimpan di perangkat ini. Perubahan akan tersinkronkan saat koneksi stabil.'
+          );
+        }
+      }
+    },
+    [showToast]
+  );
+
+  // Firebase Auth listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, currentUser => {
+      setUser(currentUser);
+      setAuthReady(true);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Firestore initial sync + real-time listener (attached only when auth is ready & user authenticated)
+  useEffect(() => {
+    if (!authReady || !user) {
+      cloudDocExistsRef.current = false;
+      setSyncing(false);
+      return;
+    }
+
+    let cancelled = false;
+    let unsubSnapshot: (() => void) | null = null;
+    const uid = user.uid;
+    const docPath = `users/${uid}`;
+    const userDocRef = doc(db, 'users', uid);
+
+    const bootstrapCloudSync = async () => {
+      setSyncing(true);
+      try {
+        const snap = await getDoc(userDocRef);
+        if (cancelled) return;
+
+        const storedOwner = getStoredOwnerUid();
+        const canMergeLocal = storedOwner === null || storedOwner === uid;
+        const localM = canMergeLocal ? masteredRef.current : new Set<string>();
+        const localH = canMergeLocal ? hardRef.current : new Set<string>();
+
+        if (!snap.exists()) {
+          cloudDocExistsRef.current = false;
+          const payload = buildUserProgressWriteData(uid, localM, localH);
+          try {
+            await setDoc(userDocRef, {
+              ...payload,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            });
+            if (cancelled) return;
+            cloudDocExistsRef.current = true;
+          } catch (writeErr) {
+            if (!cancelled) reportFirestoreFailure(writeErr, OperationType.CREATE, docPath);
+            return;
+          }
+
+          const cleanLocalM = new Set(payload.mastered);
+          const cleanLocalH = new Set(payload.hard);
+          commitProgressTransaction(cleanLocalM, cleanLocalH);
+          setStoredOwnerUid(uid);
+          setMastered(cleanLocalM);
+          setHardSet(cleanLocalH);
+
+          if (justSignedInRef.current) {
+            showToast(
+              'success',
+              'Login Google Berhasil',
+              cleanLocalM.size > 0
+                ? `${cleanLocalM.size} kanji hafal disinkronkan ke akun Google Anda.`
+                : 'Akun Google terhubung. Progres belajar akan tersimpan ke cloud.'
+            );
+            justSignedInRef.current = false;
+          }
+        } else {
+          cloudDocExistsRef.current = true;
+          const data = snap.data() as { mastered?: unknown[]; hard?: unknown[] };
+          const cleanCloud = sanitizeProgressLists(
+            Array.isArray(data.mastered) ? data.mastered : [],
+            Array.isArray(data.hard) ? data.hard : []
+          );
+          const cloudMSet = new Set(cleanCloud.mastered);
+          const cloudHSet = new Set(cleanCloud.hard);
+
+          const merged = mergeProgressSets(cloudMSet, cloudHSet, localM, localH);
+          if (merged.addedFromSecondary > 0) {
+            const payload = buildUserProgressWriteData(uid, merged.mastered, merged.hard);
+            try {
+              await updateDoc(userDocRef, {
+                mastered: payload.mastered,
+                hard: payload.hard,
+                updatedAt: serverTimestamp(),
+              });
+              if (cancelled) return;
+            } catch (updateErr) {
+              if (!cancelled) reportFirestoreFailure(updateErr, OperationType.UPDATE, docPath);
+              return;
+            }
+            if (justSignedInRef.current) {
+              showToast(
+                'success',
+                'Login & Gabung Progres Berhasil',
+                `${merged.addedFromSecondary} progres lokal digabungkan ke akun Google Anda.`
+              );
+              justSignedInRef.current = false;
+            }
+          } else if (justSignedInRef.current) {
+            showToast(
+              'success',
+              'Login Google Berhasil',
+              `Progres cloud dimuat: ${merged.mastered.size} hafal & ${merged.hard.size} sulit.`
+            );
+            justSignedInRef.current = false;
+          }
+
+          commitProgressTransaction(merged.mastered, merged.hard);
+          setStoredOwnerUid(uid);
+          setMastered(merged.mastered);
+          setHardSet(merged.hard);
+        }
+
+        if (cancelled) return;
+
+        unsubSnapshot = onSnapshot(
+          userDocRef,
+          docSnap => {
+            if (cancelled || !docSnap.exists()) return;
+            cloudDocExistsRef.current = true;
+            const raw = docSnap.data() as { mastered?: unknown[]; hard?: unknown[] };
+            const clean = sanitizeProgressLists(
+              Array.isArray(raw.mastered) ? raw.mastered : [],
+              Array.isArray(raw.hard) ? raw.hard : []
+            );
+            const nextM = new Set(clean.mastered);
+            const nextH = new Set(clean.hard);
+            if (!areSetsEqual(nextM, masteredRef.current) || !areSetsEqual(nextH, hardRef.current)) {
+              commitProgressTransaction(nextM, nextH);
+              setStoredOwnerUid(uid);
+              setMastered(nextM);
+              setHardSet(nextH);
+            }
+          },
+          snapErr => {
+            if (!cancelled) {
+              reportFirestoreFailure(snapErr, OperationType.GET, docPath);
+            }
+          }
+        );
+      } catch (err) {
+        if (!cancelled) {
+          reportFirestoreFailure(err, OperationType.GET, docPath);
+        }
+      } finally {
+        if (!cancelled) {
+          setSyncing(false);
+        }
+      }
+    };
+
+    void bootstrapCloudSync();
+
+    return () => {
+      cancelled = true;
+      if (unsubSnapshot) unsubSnapshot();
+    };
+  }, [authReady, user, reportFirestoreFailure, showToast]);
 
   const computeCardPool = useCallback(
     (
@@ -96,19 +323,121 @@ export default function App() {
     [levelIndices, hardSet]
   );
 
+  const syncProgressToCloud = useCallback(
+    async (uid: string, nextMastered: Set<string>, nextHard: Set<string>) => {
+      const docPath = `users/${uid}`;
+      const userDocRef = doc(db, 'users', uid);
+      const payload = buildUserProgressWriteData(uid, nextMastered, nextHard);
+      const op = cloudDocExistsRef.current ? OperationType.UPDATE : OperationType.CREATE;
+      try {
+        if (cloudDocExistsRef.current) {
+          await updateDoc(userDocRef, {
+            mastered: payload.mastered,
+            hard: payload.hard,
+            updatedAt: serverTimestamp(),
+          });
+        } else {
+          await setDoc(userDocRef, {
+            ...payload,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+          cloudDocExistsRef.current = true;
+        }
+      } catch (err) {
+        reportFirestoreFailure(err, op, docPath);
+      }
+    },
+    [reportFirestoreFailure]
+  );
+
   const applyProgressChange = useCallback(
     (nextMastered: Set<string>, nextHard: Set<string>): boolean => {
-      const tx = commitProgressTransaction(nextMastered, nextHard);
+      const clean = sanitizeProgressLists(nextMastered, nextHard);
+      const cleanM = new Set(clean.mastered);
+      const cleanH = new Set(clean.hard);
+
+      const tx = commitProgressTransaction(cleanM, cleanH);
       if (!tx.ok) {
         showToast('error', 'Penyimpanan Gagal', tx.error);
         return false;
       }
-      setMastered(nextMastered);
-      setHardSet(nextHard);
+
+      if (user) {
+        setStoredOwnerUid(user.uid);
+        void syncProgressToCloud(user.uid, cleanM, cleanH);
+      }
+
+      setMastered(cleanM);
+      setHardSet(cleanH);
       return true;
     },
-    [showToast]
+    [showToast, user, syncProgressToCloud]
   );
+
+  const handleSignIn = useCallback(async () => {
+    if (authBusy) return;
+    setAuthBusy(true);
+    justSignedInRef.current = true;
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (err) {
+      justSignedInRef.current = false;
+      const code =
+        typeof err === 'object' && err !== null && 'code' in err
+          ? String((err as { code: unknown }).code)
+          : '';
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        showToast('info', 'Login Dibatalkan', 'Jendela login Google ditutup sebelum selesai.');
+      } else if (code === 'auth/popup-blocked') {
+        showToast(
+          'warning',
+          'Popup Diblokir Browser',
+          'Izinkan popup untuk situs ini agar bisa masuk dengan Google.'
+        );
+      } else if (code === 'auth/network-request-failed') {
+        showToast('error', 'Koneksi Bermasalah', 'Periksa koneksi internet Anda lalu coba lagi.');
+      } else {
+        showToast(
+          'error',
+          'Login Google Gagal',
+          err instanceof Error ? err.message : 'Tidak dapat masuk dengan Google saat ini.'
+        );
+      }
+    } finally {
+      setAuthBusy(false);
+    }
+  }, [authBusy, showToast]);
+
+  const handleSignOut = useCallback(async () => {
+    if (authBusy) return;
+    setAuthBusy(true);
+    try {
+      await signOut(auth);
+      cloudDocExistsRef.current = false;
+      justSignedInRef.current = false;
+      clearStoredProgress();
+      const emptyM = new Set<string>();
+      const emptyH = new Set<string>();
+      setMastered(emptyM);
+      setHardSet(emptyH);
+      const nextPool = computeCardPool(levelFilter, hideMastered, hardMode, emptyM, emptyH);
+      rebuildOrder(nextPool, shuffleOn);
+      showToast(
+        'info',
+        'Berhasil Keluar',
+        'Progres Anda tetap tersimpan aman di akun Google.'
+      );
+    } catch (err) {
+      showToast(
+        'error',
+        'Gagal Keluar',
+        err instanceof Error ? err.message : 'Tidak dapat keluar dari akun saat ini.'
+      );
+    } finally {
+      setAuthBusy(false);
+    }
+  }, [authBusy, computeCardPool, levelFilter, hideMastered, hardMode, rebuildOrder, shuffleOn, showToast]);
 
   const handleSelectLevel = useCallback(
     (nextLevel: LevelFilter) => {
@@ -435,6 +764,12 @@ export default function App() {
           totalCount={levelIndices.length}
           restoreBtnRef={restoreBtnRef}
           fileInputRef={fileInputRef}
+          user={user}
+          authReady={authReady}
+          authBusy={authBusy}
+          syncing={syncing}
+          onSignIn={() => void handleSignIn()}
+          onSignOut={() => void handleSignOut()}
           onExport={handleExport}
           onTriggerImport={handleTriggerImport}
           onFileSelected={handleFileSelected}
@@ -509,7 +844,9 @@ export default function App() {
         </main>
 
         <footer className="border-t border-slate-200 bg-white/70 py-5 px-4 text-center text-xs text-slate-500">
-          500 kosakata kanji JLPT N4 · hingga 2.500 variasi soal kuis · progres tersimpan di perangkat ini
+          {user
+            ? `500 kosakata kanji JLPT N4 · hingga 2.500 variasi soal kuis · tersinkronisasi ke akun Google (${user.email || user.displayName || 'terhubung'})`
+            : '500 kosakata kanji JLPT N4 · hingga 2.500 variasi soal kuis · tersimpan lokal (masuk Google untuk sinkronisasi cloud)'}
         </footer>
       </div>
 

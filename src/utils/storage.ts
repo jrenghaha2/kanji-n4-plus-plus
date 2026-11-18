@@ -3,6 +3,7 @@ import type { BackupParseResult, StorageMutationResult } from '../types/kanji';
 
 export const LS_KEY = 'n4kanji_mastered_v1';
 export const HARD_KEY = 'n4kanji_hard_v1';
+export const OWNER_UID_KEY = 'n4kanji_owner_uid_v1';
 export const BACKUP_APP_ID = 'n4-kanji-kotoba';
 export const BACKUP_SCHEMA_VERSION = 1;
 
@@ -37,6 +38,47 @@ export function safeLoadSet(
     return new Set(parsed.filter((id): id is string => typeof id === 'string' && validIds.has(id)));
   } catch {
     return new Set();
+  }
+}
+
+export function getStoredOwnerUid(
+  storage: StorageLike | null = getDefaultStorage()
+): string | null {
+  if (!storage) return null;
+  try {
+    const val = storage.getItem(OWNER_UID_KEY);
+    return val && val.trim() ? val.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredOwnerUid(
+  uid: string | null,
+  storage: StorageLike | null = getDefaultStorage()
+): void {
+  if (!storage) return;
+  try {
+    if (uid) {
+      storage.setItem(OWNER_UID_KEY, uid);
+    } else {
+      storage.removeItem(OWNER_UID_KEY);
+    }
+  } catch {
+    // Ignore storage lock errors for non-critical metadata
+  }
+}
+
+export function clearStoredProgress(
+  storage: StorageLike | null = getDefaultStorage()
+): void {
+  if (!storage) return;
+  try {
+    storage.removeItem(LS_KEY);
+    storage.removeItem(HARD_KEY);
+    storage.removeItem(OWNER_UID_KEY);
+  } catch {
+    // Ignore storage lock errors
   }
 }
 

@@ -2,5 +2,7 @@
   "name": "N4 Kanji — Flashcard & Kuis ABC",
   "description": "Aplikasi belajar 500 kosakata kanji JLPT N4 dengan flashcard interaktif, daftar pencarian, pelafalan audio Jepang, kuis ABC 5 model (hingga 2.500 variasi soal terkonjugasi), serta backup & restore progres.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
