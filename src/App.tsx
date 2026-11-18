@@ -1,9 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth';
+import {
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut,
+  updateProfile,
+  type User,
+} from 'firebase/auth';
 import { doc, getDoc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { AppHeader } from './components/AppHeader';
+import { AuthModal } from './components/AuthModal';
 import { FlashcardPanel } from './components/FlashcardPanel';
 import { KanjiListPanel } from './components/KanjiListPanel';
+import { ProfileModal } from './components/ProfileModal';
 import { QuizPanel } from './components/QuizPanel';
 import { RestoreModal, type PendingRestoreState } from './components/RestoreModal';
 import { Sidebar } from './components/Sidebar';
@@ -12,8 +24,10 @@ import { KANJI } from './data/kanjiData';
 import {
   OperationType,
   auth,
+  createGoogleAccountPickerProvider,
   db,
   getFirestoreUpgradeUrl,
+  githubProvider,
   googleProvider,
   handleFirestoreError,
   isFirestoreQuotaError,
@@ -21,8 +35,11 @@ import {
 import type { AppTab, LevelFilter, ToastMessage } from './types/kanji';
 import {
   areSetsEqual,
+  buildUserProfileWriteData,
   buildUserProgressWriteData,
   mergeProgressSets,
+  sanitizeAvatarUrl,
+  sanitizeDisplayName,
   sanitizeProgressLists,
 } from './utils/progressSync';
 import { getPoolIndices, shuffled } from './utils/quizEngine';
@@ -39,6 +56,90 @@ import {
 } from './utils/storage';
 import { speakJP } from './utils/tts';
 
+function mapFirebaseAuthError(err: unknown): {
+  code: string;
+  message: string;
+  showConsoleHint: boolean;
+} {
+  const code =
+    typeof err === 'object' && err !== null && 'code' in err
+      ? String((err as { code: unknown }).code)
+      : '';
+
+  switch (code) {
+    case 'auth/popup-closed-by-user':
+    case 'auth/cancelled-popup-request':
+      return {
+        code,
+        message: 'Jendela login ditutup sebelum selesai.',
+        showConsoleHint: false,
+      };
+    case 'auth/popup-blocked':
+      return {
+        code,
+        message: 'Popup diblokir browser. Izinkan popup untuk situs ini lalu coba lagi.',
+        showConsoleHint: false,
+      };
+    case 'auth/operation-not-allowed':
+      return {
+        code,
+        message: 'Metode login ini belum diaktifkan di Firebase Console.',
+        showConsoleHint: true,
+      };
+    case 'auth/account-exists-with-different-credential':
+      return {
+        code,
+        message:
+          'Email ini sudah terdaftar dengan metode login lain. Gunakan metode login sebelumnya.',
+        showConsoleHint: false,
+      };
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found':
+      return {
+        code,
+        message: 'Email atau kata sandi tidak cocok.',
+        showConsoleHint: false,
+      };
+    case 'auth/email-already-in-use':
+      return {
+        code,
+        message: 'Email ini sudah terdaftar. Silakan masuk pada tab Masuk.',
+        showConsoleHint: false,
+      };
+    case 'auth/weak-password':
+      return {
+        code,
+        message: 'Kata sandi terlalu lemah (gunakan minimal 6 karakter).',
+        showConsoleHint: false,
+      };
+    case 'auth/invalid-email':
+      return {
+        code,
+        message: 'Format alamat email tidak valid.',
+        showConsoleHint: false,
+      };
+    case 'auth/too-many-requests':
+      return {
+        code,
+        message: 'Terlalu banyak percobaan. Tunggu beberapa saat sebelum mencoba lagi.',
+        showConsoleHint: false,
+      };
+    case 'auth/network-request-failed':
+      return {
+        code,
+        message: 'Koneksi internet bermasalah. Periksa jaringan Anda lalu coba lagi.',
+        showConsoleHint: false,
+      };
+    default:
+      return {
+        code,
+        message: err instanceof Error ? err.message : 'Gagal memproses autentikasi.',
+        showConsoleHint: false,
+      };
+  }
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<AppTab>('card');
   const [levelFilter, setLevelFilter] = useState<LevelFilter>('all');
@@ -47,10 +148,23 @@ export default function App() {
   const [hardSet, setHardSet] = useState<Set<string>>(() => safeLoadSet(HARD_KEY));
 
   const [user, setUser] = useState<User | null>(null);
+  const [authVersion, setAuthVersion] = useState(0);
   const [authReady, setAuthReady] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [fatalError, setFatalError] = useState<Error | null>(null);
+
+  const [customDisplayName, setCustomDisplayName] = useState('');
+  const [customAvatarUrl, setCustomAvatarUrl] = useState('');
+
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authSwitchMode, setAuthSwitchMode] = useState(false);
+  const [authErrorText, setAuthErrorText] = useState<string | null>(null);
+  const [authInfoText, setAuthInfoText] = useState<string | null>(null);
+  const [authConsoleHint, setAuthConsoleHint] = useState(false);
+
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
 
   const [hardMode, setHardMode] = useState(false);
   const [shuffleOn, setShuffleOn] = useState(false);
@@ -74,6 +188,10 @@ export default function App() {
   masteredRef.current = mastered;
   const hardRef = useRef(hardSet);
   hardRef.current = hardSet;
+  const customNameRef = useRef(customDisplayName);
+  customNameRef.current = customDisplayName;
+  const customAvatarRef = useRef(customAvatarUrl);
+  customAvatarRef.current = customAvatarUrl;
   const cloudDocExistsRef = useRef(false);
   const justSignedInRef = useRef(false);
 
@@ -134,22 +252,34 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, currentUser => {
       setUser(currentUser);
+      setAuthVersion(v => v + 1);
       setAuthReady(true);
     });
     return () => unsubscribe();
   }, []);
 
-  // Firestore initial sync + real-time listener (attached only when auth is ready & user authenticated)
+  // Firestore initial sync + real-time listener (attached only when auth is ready, user exists & email verified)
   useEffect(() => {
     if (!authReady || !user) {
       cloudDocExistsRef.current = false;
+      setCustomDisplayName('');
+      setCustomAvatarUrl('');
+      setSyncing(false);
+      return;
+    }
+
+    const uid = user.uid;
+    if (!user.emailVerified) {
+      cloudDocExistsRef.current = false;
+      setStoredOwnerUid(uid);
+      setCustomDisplayName(sanitizeDisplayName(user.displayName));
+      setCustomAvatarUrl(sanitizeAvatarUrl(user.photoURL));
       setSyncing(false);
       return;
     }
 
     let cancelled = false;
     let unsubSnapshot: (() => void) | null = null;
-    const uid = user.uid;
     const docPath = `users/${uid}`;
     const userDocRef = doc(db, 'users', uid);
 
@@ -167,9 +297,13 @@ export default function App() {
         if (!snap.exists()) {
           cloudDocExistsRef.current = false;
           const payload = buildUserProgressWriteData(uid, localM, localH);
+          const initialName = sanitizeDisplayName(customNameRef.current || user.displayName);
+          const initialAvatar = sanitizeAvatarUrl(customAvatarRef.current || user.photoURL);
           try {
             await setDoc(userDocRef, {
               ...payload,
+              displayName: initialName,
+              avatarUrl: initialAvatar,
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
             });
@@ -186,26 +320,38 @@ export default function App() {
           setStoredOwnerUid(uid);
           setMastered(cleanLocalM);
           setHardSet(cleanLocalH);
+          setCustomDisplayName(initialName);
+          setCustomAvatarUrl(initialAvatar);
 
           if (justSignedInRef.current) {
             showToast(
               'success',
-              'Login Google Berhasil',
+              'Login Berhasil',
               cleanLocalM.size > 0
-                ? `${cleanLocalM.size} kanji hafal disinkronkan ke akun Google Anda.`
-                : 'Akun Google terhubung. Progres belajar akan tersimpan ke cloud.'
+                ? `${cleanLocalM.size} kanji hafal disinkronkan ke akun Anda.`
+                : 'Akun terhubung. Progres belajar akan tersimpan ke cloud.'
             );
             justSignedInRef.current = false;
           }
         } else {
           cloudDocExistsRef.current = true;
-          const data = snap.data() as { mastered?: unknown[]; hard?: unknown[] };
+          const data = snap.data() as {
+            mastered?: unknown[];
+            hard?: unknown[];
+            displayName?: unknown;
+            avatarUrl?: unknown;
+          };
           const cleanCloud = sanitizeProgressLists(
             Array.isArray(data.mastered) ? data.mastered : [],
             Array.isArray(data.hard) ? data.hard : []
           );
           const cloudMSet = new Set(cleanCloud.mastered);
           const cloudHSet = new Set(cleanCloud.hard);
+
+          const cloudName = sanitizeDisplayName(data.displayName) || sanitizeDisplayName(user.displayName);
+          const cloudAvatar = sanitizeAvatarUrl(data.avatarUrl);
+          setCustomDisplayName(cloudName);
+          setCustomAvatarUrl(cloudAvatar);
 
           const merged = mergeProgressSets(cloudMSet, cloudHSet, localM, localH);
           if (merged.addedFromSecondary > 0) {
@@ -225,14 +371,14 @@ export default function App() {
               showToast(
                 'success',
                 'Login & Gabung Progres Berhasil',
-                `${merged.addedFromSecondary} progres lokal digabungkan ke akun Google Anda.`
+                `${merged.addedFromSecondary} progres lokal digabungkan ke akun Anda.`
               );
               justSignedInRef.current = false;
             }
           } else if (justSignedInRef.current) {
             showToast(
               'success',
-              'Login Google Berhasil',
+              'Login Berhasil',
               `Progres cloud dimuat: ${merged.mastered.size} hafal & ${merged.hard.size} sulit.`
             );
             justSignedInRef.current = false;
@@ -251,7 +397,12 @@ export default function App() {
           docSnap => {
             if (cancelled || !docSnap.exists()) return;
             cloudDocExistsRef.current = true;
-            const raw = docSnap.data() as { mastered?: unknown[]; hard?: unknown[] };
+            const raw = docSnap.data() as {
+              mastered?: unknown[];
+              hard?: unknown[];
+              displayName?: unknown;
+              avatarUrl?: unknown;
+            };
             const clean = sanitizeProgressLists(
               Array.isArray(raw.mastered) ? raw.mastered : [],
               Array.isArray(raw.hard) ? raw.hard : []
@@ -263,6 +414,14 @@ export default function App() {
               setStoredOwnerUid(uid);
               setMastered(nextM);
               setHardSet(nextH);
+            }
+            const nextName = sanitizeDisplayName(raw.displayName);
+            const nextAvatar = sanitizeAvatarUrl(raw.avatarUrl);
+            if (nextName && nextName !== customNameRef.current) {
+              setCustomDisplayName(nextName);
+            }
+            if (nextAvatar !== customAvatarRef.current) {
+              setCustomAvatarUrl(nextAvatar);
             }
           },
           snapErr => {
@@ -288,7 +447,7 @@ export default function App() {
       cancelled = true;
       if (unsubSnapshot) unsubSnapshot();
     };
-  }, [authReady, user, reportFirestoreFailure, showToast]);
+  }, [authReady, user, authVersion, reportFirestoreFailure, showToast]);
 
   const computeCardPool = useCallback(
     (
@@ -325,6 +484,9 @@ export default function App() {
 
   const syncProgressToCloud = useCallback(
     async (uid: string, nextMastered: Set<string>, nextHard: Set<string>) => {
+      const currentUser = auth.currentUser;
+      if (!currentUser || !currentUser.emailVerified) return;
+
       const docPath = `users/${uid}`;
       const userDocRef = doc(db, 'users', uid);
       const payload = buildUserProgressWriteData(uid, nextMastered, nextHard);
@@ -339,6 +501,8 @@ export default function App() {
         } else {
           await setDoc(userDocRef, {
             ...payload,
+            displayName: sanitizeDisplayName(customNameRef.current || currentUser.displayName),
+            avatarUrl: sanitizeAvatarUrl(customAvatarRef.current || currentUser.photoURL),
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           });
@@ -365,7 +529,9 @@ export default function App() {
 
       if (user) {
         setStoredOwnerUid(user.uid);
-        void syncProgressToCloud(user.uid, cleanM, cleanH);
+        if (user.emailVerified) {
+          void syncProgressToCloud(user.uid, cleanM, cleanH);
+        }
       }
 
       setMastered(cleanM);
@@ -375,39 +541,265 @@ export default function App() {
     [showToast, user, syncProgressToCloud]
   );
 
-  const handleSignIn = useCallback(async () => {
+  const clearAuthNotices = useCallback(() => {
+    setAuthErrorText(null);
+    setAuthInfoText(null);
+    setAuthConsoleHint(false);
+  }, []);
+
+  const handleOpenAuthModal = useCallback(
+    (isSwitch: boolean) => {
+      clearAuthNotices();
+      setAuthSwitchMode(isSwitch);
+      setAuthModalOpen(true);
+    },
+    [clearAuthNotices]
+  );
+
+  const handleGoogleLogin = useCallback(
+    async (forceSelectAccount: boolean) => {
+      if (authBusy) return;
+      clearAuthNotices();
+      setAuthBusy(true);
+      justSignedInRef.current = true;
+      try {
+        const provider = forceSelectAccount
+          ? createGoogleAccountPickerProvider()
+          : googleProvider;
+        await signInWithPopup(auth, provider);
+        setAuthModalOpen(false);
+      } catch (err) {
+        justSignedInRef.current = false;
+        const mapped = mapFirebaseAuthError(err);
+        setAuthErrorText(mapped.message);
+        setAuthConsoleHint(mapped.showConsoleHint);
+      } finally {
+        setAuthBusy(false);
+      }
+    },
+    [authBusy, clearAuthNotices]
+  );
+
+  const handleGithubLogin = useCallback(async () => {
     if (authBusy) return;
+    clearAuthNotices();
     setAuthBusy(true);
     justSignedInRef.current = true;
     try {
-      await signInWithPopup(auth, googleProvider);
+      await signInWithPopup(auth, githubProvider);
+      setAuthModalOpen(false);
     } catch (err) {
       justSignedInRef.current = false;
-      const code =
-        typeof err === 'object' && err !== null && 'code' in err
-          ? String((err as { code: unknown }).code)
-          : '';
-      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
-        showToast('info', 'Login Dibatalkan', 'Jendela login Google ditutup sebelum selesai.');
-      } else if (code === 'auth/popup-blocked') {
-        showToast(
-          'warning',
-          'Popup Diblokir Browser',
-          'Izinkan popup untuk situs ini agar bisa masuk dengan Google.'
-        );
-      } else if (code === 'auth/network-request-failed') {
-        showToast('error', 'Koneksi Bermasalah', 'Periksa koneksi internet Anda lalu coba lagi.');
-      } else {
-        showToast(
-          'error',
-          'Login Google Gagal',
-          err instanceof Error ? err.message : 'Tidak dapat masuk dengan Google saat ini.'
-        );
+      const mapped = mapFirebaseAuthError(err);
+      setAuthErrorText(mapped.message);
+      setAuthConsoleHint(mapped.showConsoleHint);
+    } finally {
+      setAuthBusy(false);
+    }
+  }, [authBusy, clearAuthNotices]);
+
+  const handleEmailSignIn = useCallback(
+    async (email: string, password: string) => {
+      if (authBusy) return;
+      clearAuthNotices();
+      setAuthBusy(true);
+      justSignedInRef.current = true;
+      try {
+        const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+        setAuthModalOpen(false);
+        if (!cred.user.emailVerified) {
+          showToast(
+            'warning',
+            'Verifikasi Email Diperlukan',
+            `Cek kotak masuk ${cred.user.email} untuk mengaktifkan sinkronisasi cloud.`
+          );
+        }
+      } catch (err) {
+        justSignedInRef.current = false;
+        const mapped = mapFirebaseAuthError(err);
+        setAuthErrorText(mapped.message);
+        setAuthConsoleHint(mapped.showConsoleHint);
+      } finally {
+        setAuthBusy(false);
       }
+    },
+    [authBusy, clearAuthNotices, showToast]
+  );
+
+  const handleEmailSignUp = useCallback(
+    async (name: string, email: string, password: string) => {
+      if (authBusy) return;
+      clearAuthNotices();
+      setAuthBusy(true);
+      justSignedInRef.current = true;
+      try {
+        const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+        const cleanName = sanitizeDisplayName(name) || email.trim().split('@')[0];
+        if (cleanName) {
+          await updateProfile(cred.user, { displayName: cleanName });
+        }
+        try {
+          await sendEmailVerification(cred.user);
+        } catch {
+          // Non-fatal if rate-limited
+        }
+        setAuthModalOpen(false);
+        showToast(
+          'info',
+          'Akun Dibuat · Cek Email',
+          `Tautan verifikasi dikirim ke ${cred.user.email}. Verifikasi untuk mulai sinkronisasi cloud.`
+        );
+      } catch (err) {
+        justSignedInRef.current = false;
+        const mapped = mapFirebaseAuthError(err);
+        setAuthErrorText(mapped.message);
+        setAuthConsoleHint(mapped.showConsoleHint);
+      } finally {
+        setAuthBusy(false);
+      }
+    },
+    [authBusy, clearAuthNotices, showToast]
+  );
+
+  const handleEmailReset = useCallback(
+    async (email: string) => {
+      if (authBusy) return;
+      clearAuthNotices();
+      setAuthBusy(true);
+      try {
+        await sendPasswordResetEmail(auth, email.trim());
+        setAuthInfoText(`Tautan reset kata sandi telah dikirim ke ${email.trim()}.`);
+      } catch (err) {
+        const mapped = mapFirebaseAuthError(err);
+        setAuthErrorText(mapped.message);
+        setAuthConsoleHint(mapped.showConsoleHint);
+      } finally {
+        setAuthBusy(false);
+      }
+    },
+    [authBusy, clearAuthNotices]
+  );
+
+  const handleResendVerification = useCallback(async () => {
+    const current = auth.currentUser;
+    if (!current || authBusy) return;
+    setAuthBusy(true);
+    try {
+      await sendEmailVerification(current);
+      showToast('success', 'Email Verifikasi Terkirim', `Periksa kotak masuk ${current.email}.`);
+    } catch (err) {
+      const mapped = mapFirebaseAuthError(err);
+      showToast('error', 'Gagal Mengirim Email', mapped.message);
     } finally {
       setAuthBusy(false);
     }
   }, [authBusy, showToast]);
+
+  const handleRefreshVerification = useCallback(async () => {
+    const current = auth.currentUser;
+    if (!current || authBusy) return;
+    setAuthBusy(true);
+    try {
+      await current.reload();
+      await current.getIdToken(true);
+      setAuthVersion(v => v + 1);
+      if (current.emailVerified) {
+        showToast('success', 'Email Terverifikasi', 'Sinkronisasi cloud kini aktif.');
+      } else {
+        showToast(
+          'info',
+          'Belum Terverifikasi',
+          'Silakan klik tautan verifikasi di email Anda lalu tekan Cek Status lagi.'
+        );
+      }
+    } catch (err) {
+      const mapped = mapFirebaseAuthError(err);
+      showToast('error', 'Gagal Memeriksa Status', mapped.message);
+    } finally {
+      setAuthBusy(false);
+    }
+  }, [authBusy, showToast]);
+
+  const handleManualSync = useCallback(async () => {
+    const current = auth.currentUser;
+    if (!current || !current.emailVerified || syncing) return;
+    setSyncing(true);
+    try {
+      await syncProgressToCloud(current.uid, masteredRef.current, hardRef.current);
+      showToast('success', 'Sinkronisasi Selesai', 'Progres terbaru telah disimpan ke cloud.');
+    } finally {
+      setSyncing(false);
+    }
+  }, [syncing, syncProgressToCloud, showToast]);
+
+  const handleSaveProfile = useCallback(
+    async (nextName: string, nextAvatarUrl: string): Promise<boolean> => {
+      const current = auth.currentUser;
+      if (!current) return false;
+      setProfileSaving(true);
+      try {
+        const clean = buildUserProfileWriteData(nextName, nextAvatarUrl);
+        await updateProfile(current, {
+          displayName: clean.displayName,
+          ...(clean.avatarUrl === '' || clean.avatarUrl.startsWith('https://')
+            ? { photoURL: clean.avatarUrl }
+            : {}),
+        });
+
+        setCustomDisplayName(clean.displayName);
+        setCustomAvatarUrl(clean.avatarUrl);
+        setAuthVersion(v => v + 1);
+
+        if (current.emailVerified) {
+          const docPath = `users/${current.uid}`;
+          const userDocRef = doc(db, 'users', current.uid);
+          try {
+            if (cloudDocExistsRef.current) {
+              await updateDoc(userDocRef, {
+                displayName: clean.displayName,
+                avatarUrl: clean.avatarUrl,
+                updatedAt: serverTimestamp(),
+              });
+            } else {
+              const payload = buildUserProgressWriteData(
+                current.uid,
+                masteredRef.current,
+                hardRef.current
+              );
+              await setDoc(userDocRef, {
+                ...payload,
+                displayName: clean.displayName,
+                avatarUrl: clean.avatarUrl,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              });
+              cloudDocExistsRef.current = true;
+            }
+          } catch (err) {
+            reportFirestoreFailure(
+              err,
+              cloudDocExistsRef.current ? OperationType.UPDATE : OperationType.CREATE,
+              docPath
+            );
+            return false;
+          }
+        }
+
+        showToast('success', 'Profil Diperbarui', 'Nama dan foto profil Anda telah disimpan.');
+        return true;
+      } catch (err) {
+        showToast(
+          'error',
+          'Gagal Memperbarui Profil',
+          err instanceof Error ? err.message : 'Terjadi kesalahan saat menyimpan profil.'
+        );
+        return false;
+      } finally {
+        setProfileSaving(false);
+      }
+    },
+    [reportFirestoreFailure, showToast]
+  );
 
   const handleSignOut = useCallback(async () => {
     if (authBusy) return;
@@ -416,6 +808,8 @@ export default function App() {
       await signOut(auth);
       cloudDocExistsRef.current = false;
       justSignedInRef.current = false;
+      setCustomDisplayName('');
+      setCustomAvatarUrl('');
       clearStoredProgress();
       const emptyM = new Set<string>();
       const emptyH = new Set<string>();
@@ -426,7 +820,7 @@ export default function App() {
       showToast(
         'info',
         'Berhasil Keluar',
-        'Progres Anda tetap tersimpan aman di akun Google.'
+        'Progres Anda tetap tersimpan aman di akun Anda.'
       );
     } catch (err) {
       showToast(
@@ -555,9 +949,11 @@ export default function App() {
     rebuildOrder([...sessionHard], shuffleOn);
   }, [sessionHard, rebuildOrder, shuffleOn]);
 
-  // Global keyboard shortcuts for Flashcard mode (disabled when RestoreModal is open)
+  const anyModalOpen = pendingRestore !== null || authModalOpen || profileModalOpen;
+
+  // Global keyboard shortcuts for Flashcard mode (disabled when any modal is open)
   useEffect(() => {
-    if (activeTab !== 'card' || pendingRestore !== null) return;
+    if (activeTab !== 'card' || anyModalOpen) return;
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -595,7 +991,7 @@ export default function App() {
 
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [activeTab, pendingRestore, pos, order, handleMarkMastered, handleMarkHard]);
+  }, [activeTab, anyModalOpen, pos, order, handleMarkMastered, handleMarkHard]);
 
   const handleExport = useCallback(() => {
     try {
@@ -753,10 +1149,14 @@ export default function App() {
     ]
   );
 
+  const effectiveDisplayName =
+    customDisplayName || user?.displayName || user?.email?.split('@')[0] || '';
+  const effectiveAvatarUrl = customAvatarUrl || user?.photoURL || '';
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
       <div
-        aria-hidden={pendingRestore !== null}
+        aria-hidden={anyModalOpen}
         className="flex-1 flex flex-col"
       >
         <AppHeader
@@ -765,10 +1165,16 @@ export default function App() {
           restoreBtnRef={restoreBtnRef}
           fileInputRef={fileInputRef}
           user={user}
+          displayName={effectiveDisplayName}
+          avatarUrl={effectiveAvatarUrl}
           authReady={authReady}
           authBusy={authBusy}
           syncing={syncing}
-          onSignIn={() => void handleSignIn()}
+          onOpenAuthModal={handleOpenAuthModal}
+          onOpenProfileModal={() => setProfileModalOpen(true)}
+          onManualSync={() => void handleManualSync()}
+          onResendVerification={() => void handleResendVerification()}
+          onRefreshVerification={() => void handleRefreshVerification()}
           onSignOut={() => void handleSignOut()}
           onExport={handleExport}
           onTriggerImport={handleTriggerImport}
@@ -836,7 +1242,7 @@ export default function App() {
               {activeTab === 'quiz' ? (
                 <QuizPanel
                   levelFilter={levelFilter}
-                  modalOpen={pendingRestore !== null}
+                  modalOpen={anyModalOpen}
                 />
               ) : null}
             </div>
@@ -845,10 +1251,36 @@ export default function App() {
 
         <footer className="border-t border-slate-200 bg-white/70 py-5 px-4 text-center text-xs text-slate-500">
           {user
-            ? `500 kosakata kanji JLPT N4 · hingga 2.500 variasi soal kuis · tersinkronisasi ke akun Google (${user.email || user.displayName || 'terhubung'})`
-            : '500 kosakata kanji JLPT N4 · hingga 2.500 variasi soal kuis · tersimpan lokal (masuk Google untuk sinkronisasi cloud)'}
+            ? `500 kosakata kanji JLPT N4 · hingga 2.500 variasi soal kuis · akun ${effectiveDisplayName || user.email || 'terhubung'}${user.emailVerified ? ' (cloud aktif)' : ' (menunggu verifikasi email)'}`
+            : '500 kosakata kanji JLPT N4 · hingga 2.500 variasi soal kuis · tersimpan lokal (masuk untuk sinkronisasi cloud)'}
         </footer>
       </div>
+
+      <AuthModal
+        open={authModalOpen}
+        isSwitchingAccount={authSwitchMode}
+        busy={authBusy}
+        errorText={authErrorText}
+        infoText={authInfoText}
+        showConsoleHint={authConsoleHint}
+        onClearNotice={clearAuthNotices}
+        onGoogleLogin={forceSelect => void handleGoogleLogin(forceSelect)}
+        onGithubLogin={() => void handleGithubLogin()}
+        onEmailSignIn={(em, pw) => void handleEmailSignIn(em, pw)}
+        onEmailSignUp={(nm, em, pw) => void handleEmailSignUp(nm, em, pw)}
+        onEmailReset={em => void handleEmailReset(em)}
+        onClose={() => setAuthModalOpen(false)}
+      />
+
+      <ProfileModal
+        open={profileModalOpen}
+        initialName={effectiveDisplayName}
+        initialAvatarUrl={customAvatarUrl}
+        fallbackAuthPhoto={user?.photoURL || ''}
+        saving={profileSaving}
+        onSave={handleSaveProfile}
+        onClose={() => setProfileModalOpen(false)}
+      />
 
       <RestoreModal
         pending={pendingRestore}

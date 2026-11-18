@@ -1,6 +1,17 @@
-import { useState, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { User } from 'firebase/auth';
-import { Cloud, Download, FolderOpen, LogOut } from 'lucide-react';
+import {
+  AlertCircle,
+  Camera,
+  ChevronDown,
+  Cloud,
+  Download,
+  FolderOpen,
+  LogIn,
+  LogOut,
+  RefreshCw,
+  Users,
+} from 'lucide-react';
 
 interface AppHeaderProps {
   masteredCount: number;
@@ -8,37 +19,28 @@ interface AppHeaderProps {
   restoreBtnRef: RefObject<HTMLButtonElement | null>;
   fileInputRef: RefObject<HTMLInputElement | null>;
   user: User | null;
+  displayName: string;
+  avatarUrl: string;
   authReady: boolean;
   authBusy: boolean;
   syncing: boolean;
-  onSignIn: () => void;
+  onOpenAuthModal: (isSwitch: boolean) => void;
+  onOpenProfileModal: () => void;
+  onManualSync: () => void;
+  onResendVerification: () => void;
+  onRefreshVerification: () => void;
   onSignOut: () => void;
   onExport: () => void;
   onTriggerImport: () => void;
   onFileSelected: (file: File) => void;
 }
 
-function GoogleGlyph() {
-  return (
-    <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        fill="#4285F4"
-        d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"
-      />
-      <path
-        fill="#34A853"
-        d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24Z"
-      />
-      <path
-        fill="#FBBC05"
-        d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14Z"
-      />
-      <path
-        fill="#EA4335"
-        d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96Z"
-      />
-    </svg>
-  );
+function getProviderLabel(user: User): string {
+  const providerId = user.providerData?.[0]?.providerId;
+  if (providerId === 'google.com') return 'Google';
+  if (providerId === 'github.com') return 'GitHub';
+  if (providerId === 'password') return 'Email & Sandi';
+  return 'Akun Terhubung';
 }
 
 export function AppHeader({
@@ -47,19 +49,67 @@ export function AppHeader({
   restoreBtnRef,
   fileInputRef,
   user,
+  displayName,
+  avatarUrl,
   authReady,
   authBusy,
   syncing,
-  onSignIn,
+  onOpenAuthModal,
+  onOpenProfileModal,
+  onManualSync,
+  onResendVerification,
+  onRefreshVerification,
   onSignOut,
   onExport,
   onTriggerImport,
   onFileSelected,
 }: AppHeaderProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const [avatarBroken, setAvatarBroken] = useState(false);
 
-  const displayName = user?.displayName?.trim() || user?.email?.split('@')[0] || 'Akun Google';
-  const initial = displayName.charAt(0).toUpperCase() || 'G';
+  const menuWrapperRef = useRef<HTMLDivElement>(null);
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    setAvatarBroken(false);
+  }, [avatarUrl, user?.uid]);
+
+  useEffect(() => {
+    if (!user) {
+      setMenuOpen(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const handlePointerDown = (e: PointerEvent) => {
+      if (menuWrapperRef.current && !menuWrapperRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setMenuOpen(false);
+        requestAnimationFrame(() => menuBtnRef.current?.focus());
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [menuOpen]);
+
+  const resolvedName =
+    displayName.trim() || user?.displayName?.trim() || user?.email?.split('@')[0] || 'Pengguna';
+  const initial = resolvedName.charAt(0).toUpperCase() || 'K';
+  const resolvedAvatar = avatarUrl || user?.photoURL || '';
+  const isVerified = Boolean(user?.emailVerified);
 
   return (
     <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200">
@@ -126,67 +176,214 @@ export function AppHeader({
           {!authReady ? (
             <div
               aria-hidden="true"
-              className="h-10 w-[86px] sm:w-[120px] rounded-xl bg-slate-100 animate-pulse shrink-0"
+              className="h-10 w-[86px] sm:w-[104px] rounded-xl bg-slate-100 animate-pulse shrink-0"
             />
           ) : user ? (
-            <div className="flex items-center gap-1.5 sm:gap-2 pl-1 sm:pl-2 border-l border-slate-200 shrink-0">
-              <div
-                className="flex items-center gap-2 min-w-0"
-                title={`${displayName}${user.email ? ` (${user.email})` : ''}`}
-              >
-                {user.photoURL && !avatarBroken ? (
-                  <img
-                    src={user.photoURL}
-                    alt={displayName}
-                    referrerPolicy="no-referrer"
-                    onError={() => setAvatarBroken(true)}
-                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-slate-200 object-cover shrink-0"
-                  />
-                ) : (
-                  <span
-                    aria-hidden="true"
-                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-indigo-200 bg-indigo-50 text-indigo-700 font-bold text-xs inline-flex items-center justify-center shrink-0"
-                  >
-                    {initial}
-                  </span>
-                )}
-                <span className="hidden lg:inline text-xs font-semibold text-slate-700 max-w-[120px] truncate">
-                  {displayName}
-                </span>
-                {syncing ? (
-                  <Cloud
-                    className="w-3.5 h-3.5 text-indigo-600 animate-pulse shrink-0"
-                    aria-label="Menyinkronkan progres"
-                  />
-                ) : null}
-              </div>
-
+            <div ref={menuWrapperRef} className="relative pl-1 sm:pl-2 border-l border-slate-200">
               <button
+                ref={menuBtnRef}
                 type="button"
-                id="btnGoogleLogout"
-                onClick={onSignOut}
-                disabled={authBusy}
-                aria-label="Keluar dari akun Google"
-                title="Keluar dari akun Google"
-                className="min-h-[40px] px-2.5 sm:px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-rose-50 hover:border-rose-200 text-slate-700 hover:text-rose-700 text-xs sm:text-sm font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-indigo-600"
+                id="btnAccountMenu"
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                aria-label={`Menu akun ${resolvedName}`}
+                onClick={() => setMenuOpen(o => !o)}
+                className="min-h-[40px] px-2 sm:px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 inline-flex items-center gap-2 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-600"
               >
-                <LogOut className="w-4 h-4 shrink-0" aria-hidden="true" />
-                <span className="hidden sm:inline">Keluar</span>
+                <span className="relative shrink-0">
+                  {resolvedAvatar && !avatarBroken ? (
+                    <img
+                      src={resolvedAvatar}
+                      alt={resolvedName}
+                      referrerPolicy="no-referrer"
+                      onError={() => setAvatarBroken(true)}
+                      className="w-7 h-7 rounded-full border border-slate-200 object-cover bg-slate-100"
+                    />
+                  ) : (
+                    <span
+                      aria-hidden="true"
+                      className="w-7 h-7 rounded-full border border-indigo-200 bg-indigo-50 text-indigo-700 font-bold text-xs inline-flex items-center justify-center"
+                    >
+                      {initial}
+                    </span>
+                  )}
+                  {!isVerified ? (
+                    <span
+                      aria-hidden="true"
+                      className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-amber-500 border-2 border-white"
+                    />
+                  ) : syncing ? (
+                    <span
+                      aria-hidden="true"
+                      className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-indigo-500 border-2 border-white animate-pulse"
+                    />
+                  ) : null}
+                </span>
+
+                <span className="hidden md:inline text-xs sm:text-sm font-semibold text-slate-800 max-w-[130px] truncate">
+                  {resolvedName}
+                </span>
+
+                <ChevronDown
+                  className={`w-3.5 h-3.5 text-slate-500 transition-transform shrink-0 ${
+                    menuOpen ? 'rotate-180' : ''
+                  }`}
+                  aria-hidden="true"
+                />
               </button>
+
+              {menuOpen ? (
+                <div
+                  id="accountMenuDropdown"
+                  role="menu"
+                  aria-labelledby="btnAccountMenu"
+                  className="absolute right-0 mt-2 w-72 sm:w-80 rounded-2xl bg-white border border-slate-200 shadow-xl py-2 z-40"
+                >
+                  <div className="px-4 py-3 border-b border-slate-100 flex items-start gap-3">
+                    {resolvedAvatar && !avatarBroken ? (
+                      <img
+                        src={resolvedAvatar}
+                        alt={resolvedName}
+                        referrerPolicy="no-referrer"
+                        onError={() => setAvatarBroken(true)}
+                        className="w-10 h-10 rounded-full border border-slate-200 object-cover shrink-0 bg-slate-100"
+                      />
+                    ) : (
+                      <span
+                        aria-hidden="true"
+                        className="w-10 h-10 rounded-full border border-indigo-200 bg-indigo-50 text-indigo-700 font-bold text-sm inline-flex items-center justify-center shrink-0"
+                      >
+                        {initial}
+                      </span>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold text-slate-900 truncate">{resolvedName}</p>
+                      {user.email ? (
+                        <p className="text-xs text-slate-500 truncate">{user.email}</p>
+                      ) : null}
+                      <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1.5">
+                        <span>{getProviderLabel(user)}</span>
+                        <span aria-hidden="true">·</span>
+                        {isVerified ? (
+                          <span className="text-emerald-700 font-medium inline-flex items-center gap-1">
+                            <Cloud className="w-3 h-3 shrink-0" aria-hidden="true" />
+                            {syncing ? 'Menyinkronkan...' : 'Cloud aktif'}
+                          </span>
+                        ) : (
+                          <span className="text-amber-700 font-medium inline-flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3 shrink-0" aria-hidden="true" />
+                            Belum verifikasi email
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  {!isVerified ? (
+                    <div className="mx-3 my-2 rounded-xl bg-amber-50 border border-amber-200 p-2.5 space-y-2">
+                      <p className="text-[11px] text-amber-900 leading-relaxed">
+                        Verifikasi email Anda agar progres bisa disinkronkan ke cloud.
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={onResendVerification}
+                          disabled={authBusy}
+                          className="px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-[11px] font-semibold text-amber-900 hover:bg-amber-100 cursor-pointer"
+                        >
+                          Kirim Ulang
+                        </button>
+                        <button
+                          type="button"
+                          onClick={onRefreshVerification}
+                          disabled={authBusy}
+                          className="px-2.5 py-1 rounded-lg bg-amber-600 text-[11px] font-semibold text-white hover:bg-amber-700 cursor-pointer"
+                        >
+                          Cek Status
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="py-1">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      id="menuEditProfile"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        onOpenProfileModal();
+                      }}
+                      className="w-full px-4 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-indigo-700 flex items-center gap-2.5 transition-colors cursor-pointer"
+                    >
+                      <Camera className="w-4 h-4 shrink-0 text-slate-500" aria-hidden="true" />
+                      <span>Ubah Nama &amp; Foto Profil</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      role="menuitem"
+                      id="menuSwitchAccount"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        onOpenAuthModal(true);
+                      }}
+                      className="w-full px-4 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-indigo-700 flex items-center gap-2.5 transition-colors cursor-pointer"
+                    >
+                      <Users className="w-4 h-4 shrink-0 text-slate-500" aria-hidden="true" />
+                      <span>Ganti Akun</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      role="menuitem"
+                      id="menuSyncNow"
+                      disabled={!isVerified || syncing}
+                      onClick={() => {
+                        setMenuOpen(false);
+                        onManualSync();
+                      }}
+                      className="w-full px-4 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-indigo-700 flex items-center gap-2.5 transition-colors cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+                    >
+                      <RefreshCw
+                        className={`w-4 h-4 shrink-0 text-slate-500 ${syncing ? 'animate-spin' : ''}`}
+                        aria-hidden="true"
+                      />
+                      <span>Sinkronkan Progres Sekarang</span>
+                    </button>
+                  </div>
+
+                  <div className="my-1 border-t border-slate-100" />
+
+                  <button
+                    type="button"
+                    role="menuitem"
+                    id="btnGoogleLogout"
+                    disabled={authBusy}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onSignOut();
+                    }}
+                    className="w-full px-4 py-2.5 text-left text-sm font-semibold text-rose-700 hover:bg-rose-50 flex items-center gap-2.5 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <LogOut className="w-4 h-4 shrink-0" aria-hidden="true" />
+                    <span>Keluar</span>
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : (
             <button
               type="button"
-              id="btnGoogleLogin"
-              onClick={onSignIn}
+              id="btnOpenAuthModal"
+              onClick={() => onOpenAuthModal(false)}
               disabled={authBusy}
-              aria-label="Masuk dengan Google untuk sinkronisasi progres"
-              title="Masuk dengan Google"
-              className="min-h-[40px] px-2.5 sm:px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-indigo-50 hover:border-indigo-200 text-slate-800 hover:text-indigo-700 text-xs sm:text-sm font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-indigo-600"
+              aria-label="Masuk ke akun untuk sinkronisasi progres"
+              title="Masuk atau daftar akun"
+              className="min-h-[40px] px-3 sm:px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-indigo-600"
             >
-              <GoogleGlyph />
-              <span>{authBusy ? 'Masuk...' : 'Masuk'}</span>
-              <span className="hidden sm:inline">{authBusy ? '' : 'Google'}</span>
+              <LogIn className="w-4 h-4 shrink-0" aria-hidden="true" />
+              <span>Masuk</span>
             </button>
           )}
         </div>

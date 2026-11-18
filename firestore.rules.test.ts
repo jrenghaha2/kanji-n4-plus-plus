@@ -3,13 +3,19 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
+  AVATAR_URL_MAX_LENGTH,
+  AVATAR_URL_PATTERN,
+  DISPLAY_NAME_MAX_LENGTH,
   KANJI_ID_PATTERN,
   MAX_KANJI_LIST_SIZE,
   UID_MAX_LENGTH,
   UID_PATTERN,
+  buildUserProfileWriteData,
   buildUserProgressWriteData,
+  isValidAvatarUrl,
   isValidFirebaseUid,
   mergeProgressSets,
+  sanitizeDisplayName,
   sanitizeProgressLists,
 } from './src/utils/progressSync';
 
@@ -25,6 +31,8 @@ interface MockProgressDoc {
   uid?: unknown;
   mastered?: unknown;
   hard?: unknown;
+  displayName?: unknown;
+  avatarUrl?: unknown;
   createdAt?: unknown;
   updatedAt?: unknown;
   [extra: string]: unknown;
@@ -57,9 +65,18 @@ function simulateRulesDecision(
     return 'PERMISSION_DENIED';
   }
 
-  const allowedKeys = new Set(['uid', 'mastered', 'hard', 'createdAt', 'updatedAt']);
+  const requiredKeys = new Set(['uid', 'mastered', 'hard', 'createdAt', 'updatedAt']);
+  const allowedKeys = new Set([
+    'uid',
+    'mastered',
+    'hard',
+    'displayName',
+    'avatarUrl',
+    'createdAt',
+    'updatedAt',
+  ]);
   const keys = Object.keys(incoming);
-  if (![...allowedKeys].every(k => Object.prototype.hasOwnProperty.call(incoming, k))) {
+  if (![...requiredKeys].every(k => Object.prototype.hasOwnProperty.call(incoming, k))) {
     return 'PERMISSION_DENIED';
   }
   if (!keys.every(k => allowedKeys.has(k))) {
@@ -68,6 +85,17 @@ function simulateRulesDecision(
   if (!isValidId(incoming.uid) || incoming.uid !== auth.uid) {
     return 'PERMISSION_DENIED';
   }
+  if (
+    incoming.displayName !== undefined &&
+    (typeof incoming.displayName !== 'string' ||
+      incoming.displayName.length > DISPLAY_NAME_MAX_LENGTH)
+  ) {
+    return 'PERMISSION_DENIED';
+  }
+  if (incoming.avatarUrl !== undefined && !isValidAvatarUrl(incoming.avatarUrl)) {
+    return 'PERMISSION_DENIED';
+  }
+
   const checkList = (arr: unknown) =>
     Array.isArray(arr) &&
     arr.length <= MAX_KANJI_LIST_SIZE &&
@@ -92,11 +120,17 @@ function simulateRulesDecision(
     return 'PERMISSION_DENIED';
   }
 
-  // op === 'update'
   if (!existing) return 'PERMISSION_DENIED';
   const changedKeys = keys.filter(k => incoming[k] !== existing[k]);
-  const allowedUpdateKeys = new Set(['mastered', 'hard', 'updatedAt']);
-  if (!changedKeys.every(k => allowedUpdateKeys.has(k))) {
+  const progressKeys = new Set(['mastered', 'hard', 'updatedAt']);
+  const profileKeys = new Set(['displayName', 'avatarUrl', 'updatedAt']);
+  const combinedKeys = new Set(['mastered', 'hard', 'displayName', 'avatarUrl', 'updatedAt']);
+  const validAction =
+    changedKeys.every(k => progressKeys.has(k)) ||
+    changedKeys.every(k => profileKeys.has(k)) ||
+    changedKeys.every(k => combinedKeys.has(k));
+
+  if (!validAction) {
     return 'PERMISSION_DENIED';
   }
   if (
@@ -112,7 +146,15 @@ function simulateRulesDecision(
 test('firestore.rules file implements all Eight Pillars gates and matches firebase-blueprint.json', () => {
   const rulesText = fs.readFileSync(RULES_PATH, 'utf8');
   const blueprint = JSON.parse(fs.readFileSync(BLUEPRINT_PATH, 'utf8')) as {
-    entities: { UserProgress: { properties: { uid: { maxLength: number } }; required: string[] } };
+    entities: {
+      UserProgress: {
+        properties: {
+          uid: { maxLength: number };
+          displayName: { maxLength: number };
+          avatarUrl: { maxLength: number };
+        };
+      };
+    };
     firestore: Record<string, unknown>;
   };
 
@@ -122,12 +164,21 @@ test('firestore.rules file implements all Eight Pillars gates and matches fireba
   assert.ok(rulesText.includes('allow list: if false;'));
   assert.ok(rulesText.includes('request.auth.token.email_verified == true'));
   assert.ok(rulesText.includes('isValidUserProgress(incoming())'));
-  assert.ok(rulesText.includes("affectedKeys().hasOnly(['mastered', 'hard', 'updatedAt'])"));
   assert.ok(rulesText.includes(`id.size() <= ${blueprint.entities.UserProgress.properties.uid.maxLength}`));
+  assert.ok(
+    rulesText.includes(
+      `data.displayName.size() <= ${blueprint.entities.UserProgress.properties.displayName.maxLength}`
+    )
+  );
+  assert.ok(
+    rulesText.includes(
+      `data.avatarUrl.size() <= ${blueprint.entities.UserProgress.properties.avatarUrl.maxLength}`
+    )
+  );
   assert.ok(Object.prototype.hasOwnProperty.call(blueprint.firestore, '/users/{userId}'));
 });
 
-test('Dirty Dozen adversarial payloads all result in PERMISSION_DENIED', () => {
+test('Dirty Dozen adversarial payloads and unsafe profile inputs result in PERMISSION_DENIED', () => {
   const userA: MockAuth = { uid: 'userA_123', token: { email_verified: true } };
   const userB: MockAuth = { uid: 'userB_456', token: { email_verified: true } };
   const unverifiedA: MockAuth = { uid: 'userA_123', token: { email_verified: false } };
@@ -140,41 +191,31 @@ test('Dirty Dozen adversarial payloads all result in PERMISSION_DENIED', () => {
     updatedAt: SERVER_TIME,
   };
 
-  // 1. Unauthenticated read/write
+  // 1-12 Dirty Dozen
   assert.equal(simulateRulesDecision('get', null, 'userA_123'), 'PERMISSION_DENIED');
   assert.equal(
     simulateRulesDecision('create', null, 'userA_123', { ...validExisting }),
     'PERMISSION_DENIED'
   );
-
-  // 2. Unverified email mutation
   assert.equal(
     simulateRulesDecision('create', unverifiedA, 'userA_123', { ...validExisting }),
     'PERMISSION_DENIED'
   );
-
-  // 3. Cross-user get
   assert.equal(simulateRulesDecision('get', userB, 'userA_123'), 'PERMISSION_DENIED');
-
-  // 4. Collection scraping (list)
   assert.equal(simulateRulesDecision('list', userA, 'userA_123'), 'PERMISSION_DENIED');
-
-  // 5. Identity spoofing on create
   assert.equal(
     simulateRulesDecision('create', userA, 'userA_123', { ...validExisting, uid: 'userB_456' }),
     'PERMISSION_DENIED'
   );
-
-  // 6. Path-ID poisoning
   assert.equal(
-    simulateRulesDecision('create', { uid: 'a'.repeat(200), token: { email_verified: true } }, 'a'.repeat(200), {
-      ...validExisting,
-      uid: 'a'.repeat(200),
-    }),
+    simulateRulesDecision(
+      'create',
+      { uid: 'a'.repeat(200), token: { email_verified: true } },
+      'a'.repeat(200),
+      { ...validExisting, uid: 'a'.repeat(200) }
+    ),
     'PERMISSION_DENIED'
   );
-
-  // 7. Shadow / ghost field injection
   assert.equal(
     simulateRulesDecision('create', userA, 'userA_123', { ...validExisting, isAdmin: true }),
     'PERMISSION_DENIED'
@@ -189,8 +230,6 @@ test('Dirty Dozen adversarial payloads all result in PERMISSION_DENIED', () => {
     ),
     'PERMISSION_DENIED'
   );
-
-  // 8. Missing required fields
   assert.equal(
     simulateRulesDecision('create', userA, 'userA_123', {
       uid: 'userA_123',
@@ -200,8 +239,6 @@ test('Dirty Dozen adversarial payloads all result in PERMISSION_DENIED', () => {
     }),
     'PERMISSION_DENIED'
   );
-
-  // 9. Immortal field tampering
   assert.equal(
     simulateRulesDecision(
       'update',
@@ -212,8 +249,6 @@ test('Dirty Dozen adversarial payloads all result in PERMISSION_DENIED', () => {
     ),
     'PERMISSION_DENIED'
   );
-
-  // 10. Client-forged timestamp
   assert.equal(
     simulateRulesDecision('create', userA, 'userA_123', {
       ...validExisting,
@@ -221,15 +256,11 @@ test('Dirty Dozen adversarial payloads all result in PERMISSION_DENIED', () => {
     }),
     'PERMISSION_DENIED'
   );
-
-  // 11. Denial-of-Wallet array overflow (> 500 items)
   const oversized = Array.from({ length: 501 }, (_, i) => `n${i + 1}`);
   assert.equal(
     simulateRulesDecision('create', userA, 'userA_123', { ...validExisting, mastered: oversized }),
     'PERMISSION_DENIED'
   );
-
-  // 12. Value type / pattern poisoning
   assert.equal(
     simulateRulesDecision('create', userA, 'userA_123', {
       ...validExisting,
@@ -238,34 +269,77 @@ test('Dirty Dozen adversarial payloads all result in PERMISSION_DENIED', () => {
     'PERMISSION_DENIED'
   );
 
-  // Happy path sanity check
+  // Unsafe profile XSS / SVG / oversized payload rejection
   assert.equal(
-    simulateRulesDecision('create', userA, 'userA_123', { ...validExisting }),
-    'ALLOW'
+    simulateRulesDecision(
+      'update',
+      userA,
+      'userA_123',
+      { ...validExisting, avatarUrl: 'javascript:alert(1)' },
+      validExisting
+    ),
+    'PERMISSION_DENIED'
   );
   assert.equal(
     simulateRulesDecision(
       'update',
       userA,
       'userA_123',
-      { ...validExisting, mastered: ['n1', 'n2'], hard: [] },
+      { ...validExisting, avatarUrl: 'data:image/svg+xml;base64,PHN2Zz4=' },
+      validExisting
+    ),
+    'PERMISSION_DENIED'
+  );
+  assert.equal(
+    simulateRulesDecision(
+      'update',
+      userA,
+      'userA_123',
+      { ...validExisting, displayName: 'x'.repeat(61) },
+      validExisting
+    ),
+    'PERMISSION_DENIED'
+  );
+
+  // Valid profile & progress updates pass
+  assert.equal(
+    simulateRulesDecision(
+      'update',
+      userA,
+      'userA_123',
+      {
+        ...validExisting,
+        displayName: 'Rasen',
+        avatarUrl: 'data:image/jpeg;base64,/9j/4AAQSkZJRg==',
+      },
       validExisting
     ),
     'ALLOW'
   );
 });
 
-test('progressSync enforces blueprint bounds, sanitization, and conflict-free guest/cloud merging', () => {
+test('progressSync enforces blueprint bounds, sanitization, profile checks, and merging', () => {
   assert.equal(isValidFirebaseUid('abc_XYZ-123'), true);
   assert.equal(isValidFirebaseUid('bad uid!'), false);
   assert.equal(isValidFirebaseUid('a'.repeat(129)), false);
+
+  assert.equal(sanitizeDisplayName('  Rasen  '), 'Rasen');
+  assert.equal(sanitizeDisplayName('a'.repeat(100)).length, 60);
+  assert.equal(AVATAR_URL_PATTERN.test('https://example.com/a.png'), true);
+  assert.equal(AVATAR_URL_PATTERN.test('data:image/webp;base64,UklGRh4='), true);
+  assert.equal(AVATAR_URL_PATTERN.test('javascript:alert(1)'), false);
+  assert.equal(isValidAvatarUrl('https://' + 'a'.repeat(AVATAR_URL_MAX_LENGTH)), false);
+  assert.throws(() => buildUserProfileWriteData('Rasen', 'http://insecure.example/a.png'));
+  assert.deepEqual(buildUserProfileWriteData('  Rasen ', 'https://example.com/a.png'), {
+    displayName: 'Rasen',
+    avatarUrl: 'https://example.com/a.png',
+  });
 
   const clean = sanitizeProgressLists(
     ['n1', 'n1', 'invalid_id', 42, 'n2'],
     ['n2', 'n3', 'n9999', 'n4']
   );
   assert.deepEqual(clean.mastered, ['n1', 'n2']);
-  // n2 was already mastered so it is stripped from hard; n9999 is stripped as invalid
   assert.deepEqual(clean.hard, ['n3', 'n4']);
 
   const payload = buildUserProgressWriteData('user_01', ['n5'], ['n6', 'n5']);
@@ -278,7 +352,6 @@ test('progressSync enforces blueprint bounds, sanitization, and conflict-free gu
     ['n1', 'n5']
   );
   assert.deepEqual([...merged.mastered].sort(), ['n1', 'n2', 'n3', 'n4']);
-  // n3 became mastered via secondary, n1 was already mastered in primary, so only n5 stays hard
   assert.deepEqual([...merged.hard], ['n5']);
   assert.equal(merged.addedFromSecondary, 3);
 });

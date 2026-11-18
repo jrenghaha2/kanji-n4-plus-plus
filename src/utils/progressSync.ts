@@ -6,6 +6,10 @@ export const UID_MAX_LENGTH = 128;
 export const UID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 export const KANJI_ID_PATTERN = /^n[0-9]{1,3}$/;
 export const MAX_KANJI_LIST_SIZE = 500;
+export const DISPLAY_NAME_MAX_LENGTH = 60;
+export const AVATAR_URL_MAX_LENGTH = 20000;
+export const AVATAR_URL_PATTERN =
+  /^(|https:\/\/.*|data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+)$/;
 
 export interface SanitizedProgressLists {
   mastered: string[];
@@ -18,6 +22,11 @@ export interface ProgressSyncPayload {
   hard: string[];
 }
 
+export interface UserProfileWriteData {
+  displayName: string;
+  avatarUrl: string;
+}
+
 export function isValidFirebaseUid(uid: unknown): uid is string {
   return (
     typeof uid === 'string' &&
@@ -25,6 +34,42 @@ export function isValidFirebaseUid(uid: unknown): uid is string {
     uid.length <= UID_MAX_LENGTH &&
     UID_PATTERN.test(uid)
   );
+}
+
+export function sanitizeDisplayName(raw: unknown): string {
+  if (typeof raw !== 'string') return '';
+  return raw.trim().slice(0, DISPLAY_NAME_MAX_LENGTH);
+}
+
+export function isValidAvatarUrl(raw: unknown): raw is string {
+  return (
+    typeof raw === 'string' &&
+    raw.length <= AVATAR_URL_MAX_LENGTH &&
+    AVATAR_URL_PATTERN.test(raw)
+  );
+}
+
+export function sanitizeAvatarUrl(raw: unknown): string {
+  if (typeof raw !== 'string') return '';
+  const trimmed = raw.trim();
+  return isValidAvatarUrl(trimmed) ? trimmed : '';
+}
+
+export function buildUserProfileWriteData(
+  rawDisplayName: unknown,
+  rawAvatarUrl: unknown
+): UserProfileWriteData {
+  const displayName = sanitizeDisplayName(rawDisplayName);
+  const trimmedAvatar = typeof rawAvatarUrl === 'string' ? rawAvatarUrl.trim() : '';
+  if (trimmedAvatar && !isValidAvatarUrl(trimmedAvatar)) {
+    throw new Error(
+      'Foto profil harus berupa URL HTTPS atau gambar JPEG/PNG/WebP terkompresi (maksimal ~15 KB).'
+    );
+  }
+  return {
+    displayName,
+    avatarUrl: trimmedAvatar,
+  };
 }
 
 /**

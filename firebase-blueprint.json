@@ -2,7 +2,7 @@
   "entities": {
     "UserProgress": {
       "title": "UserProgress",
-      "description": "Progres belajar kanji JLPT N4 per pengguna (daftar ID kanji yang hafal dan sulit).",
+      "description": "Progres belajar kanji JLPT N4 dan profil tampilan per pengguna.",
       "type": "object",
       "properties": {
         "uid": {
@@ -19,6 +19,19 @@
         "hard": {
           "type": "array",
           "description": "Daftar maksimal 500 ID kanji unik (pola ^n[0-9]{1,3}$) yang ditandai sulit."
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 60,
+          "description": "Nama tampilan kustom pengguna (opsional, maksimal 60 karakter)."
+        },
+        "avatarUrl": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 20000,
+          "pattern": "^(|https://.*|data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+)$",
+          "description": "URL HTTPS atau data URI gambar terkompresi (JPEG/PNG/WebP) untuk foto profil kustom."
         },
         "createdAt": {
           "type": "string",
@@ -39,7 +52,7 @@
       "schema": {
         "$ref": "#/entities/UserProgress"
       },
-      "description": "Dokumen progres kanji JLPT N4 milik masing-masing pengguna terautentikasi, diisolasi per userId."
+      "description": "Dokumen progres kanji JLPT N4 dan profil tampilan milik masing-masing pengguna terautentikasi, diisolasi per userId."
     }
   }
 }
