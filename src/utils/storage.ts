@@ -3,6 +3,12 @@ import type { BackupParseResult, StorageMutationResult } from '../types/kanji';
 
 export const LS_KEY = 'n4kanji_mastered_v1';
 export const HARD_KEY = 'n4kanji_hard_v1';
+export const IRODORI_LS_KEY = 'irodori_mastered_v1';
+export const IRODORI_HARD_KEY = 'irodori_hard_v1';
+export const IRODORI_PEMULA_LS_KEY = 'irodori_pemula_mastered_v1';
+export const IRODORI_PEMULA_HARD_KEY = 'irodori_pemula_hard_v1';
+export const IRODORI_DASAR2_LS_KEY = 'irodori_dasar2_mastered_v1';
+export const IRODORI_DASAR2_HARD_KEY = 'irodori_dasar2_hard_v1';
 export const OWNER_UID_KEY = 'n4kanji_owner_uid_v1';
 export const BACKUP_APP_ID = 'n4-kanji-kotoba';
 export const BACKUP_SCHEMA_VERSION = 1;
@@ -83,11 +89,11 @@ export function clearStoredProgress(
 }
 
 /**
- * Transactionally persists both mastered and hard sets to localStorage.
- * If either write fails, rolls back to the previous stored values and returns ok: false
- * so the UI never reports a false success.
+ * Transactionally persists both mastered and hard sets to localStorage for any scoped key pair.
  */
-export function commitProgressTransaction(
+export function commitScopedProgressTransaction(
+  masteredKey: string,
+  hardKey: string,
   nextMastered: Set<string>,
   nextHard: Set<string>,
   storage: StorageLike | null = getDefaultStorage()
@@ -103,8 +109,8 @@ export function commitProgressTransaction(
   let prevRawH: string | null = null;
 
   try {
-    prevRawM = storage.getItem(LS_KEY);
-    prevRawH = storage.getItem(HARD_KEY);
+    prevRawM = storage.getItem(masteredKey);
+    prevRawH = storage.getItem(hardKey);
   } catch {
     return {
       ok: false,
@@ -115,12 +121,11 @@ export function commitProgressTransaction(
   try {
     const mJson = JSON.stringify([...nextMastered]);
     const hJson = JSON.stringify([...nextHard]);
-    storage.setItem(LS_KEY, mJson);
-    storage.setItem(HARD_KEY, hJson);
+    storage.setItem(masteredKey, mJson);
+    storage.setItem(hardKey, hJson);
 
-    // Read-back verification to catch silent storage failures
-    const verifyM = storage.getItem(LS_KEY);
-    const verifyH = storage.getItem(HARD_KEY);
+    const verifyM = storage.getItem(masteredKey);
+    const verifyH = storage.getItem(hardKey);
     if (verifyM !== mJson || verifyH !== hJson) {
       throw new Error('Verification mismatch after write');
     }
@@ -128,10 +133,10 @@ export function commitProgressTransaction(
     return { ok: true };
   } catch {
     try {
-      if (prevRawM === null) storage.removeItem(LS_KEY);
-      else storage.setItem(LS_KEY, prevRawM);
-      if (prevRawH === null) storage.removeItem(HARD_KEY);
-      else storage.setItem(HARD_KEY, prevRawH);
+      if (prevRawM === null) storage.removeItem(masteredKey);
+      else storage.setItem(masteredKey, prevRawM);
+      if (prevRawH === null) storage.removeItem(hardKey);
+      else storage.setItem(hardKey, prevRawH);
     } catch {
       // Ignore rollback errors if storage is completely locked
     }
@@ -141,6 +146,19 @@ export function commitProgressTransaction(
         'Gagal menyimpan ke penyimpanan browser (memori penuh atau diblokir). Progres sebelumnya tetap aman.',
     };
   }
+}
+
+/**
+ * Transactionally persists both mastered and hard sets to localStorage.
+ * If either write fails, rolls back to the previous stored values and returns ok: false
+ * so the UI never reports a false success.
+ */
+export function commitProgressTransaction(
+  nextMastered: Set<string>,
+  nextHard: Set<string>,
+  storage: StorageLike | null = getDefaultStorage()
+): StorageMutationResult {
+  return commitScopedProgressTransaction(LS_KEY, HARD_KEY, nextMastered, nextHard, storage);
 }
 
 function parseLegacyListField(rawField: unknown, fieldLabel: string): unknown[] {

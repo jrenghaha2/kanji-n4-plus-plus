@@ -1,6 +1,70 @@
 export type DifficultyLevel = 'easy' | 'medium' | 'hard';
 export type LevelFilter = 'all' | DifficultyLevel;
 export type AppTab = 'card' | 'list' | 'quiz';
+export type AppDatasetMode = 'n4' | 'irodori';
+
+export type IrodoriChapterNumber =
+  | 1
+  | 2
+  | 3
+  | 4
+  | 5
+  | 6
+  | 7
+  | 8
+  | 9
+  | 10
+  | 11
+  | 12
+  | 13
+  | 14
+  | 15
+  | 16
+  | 17
+  | 18;
+
+export type IrodoriBookId = 'pemula' | 'dasar1' | 'dasar2';
+
+export type IrodoriChapterFilter = 'all' | IrodoriChapterNumber;
+
+export interface IrodoriChapterMeta {
+  chapter: IrodoriChapterNumber;
+  label: string;
+  shortLabel: string;
+  jpTitle: string;
+  idTitle: string;
+  topicJp: string;
+  topicId: string;
+  dotColor: string;
+}
+
+export type RawIrodoriTuple = [
+  IrodoriChapterNumber,
+  string, // k (Kotoba / Kanji)
+  string, // r (Hiragana / Katakana reading)
+  string, // accent (Pitch accent)
+  string, // m (Arti Bahasa Indonesia)
+  string, // subSection (Bagian dalam bab)
+  string, // ex (Contoh kalimat Jepang)
+  string, // exi (Terjemahan contoh kalimat)
+];
+
+export interface IrodoriBookConfig {
+  id: IrodoriBookId;
+  order: number;
+  label: string;
+  shortLabel: string;
+  jpTitle: string;
+  cefrLevel: string;
+  idPrefix: string;
+  lsKey: string;
+  hardKey: string;
+  quizHistoryKey: string;
+  pdfPath: string;
+  chapters: Record<IrodoriChapterNumber, IrodoriChapterMeta>;
+  data: KanjiEntry[];
+  validIds: Set<string>;
+}
 
 export interface KanjiEntry {
   id: string;
@@ -11,6 +75,9 @@ export interface KanjiEntry {
   exi: string;
   lv: 'N4';
   dif: DifficultyLevel;
+  chapter?: IrodoriChapterNumber;
+  accent?: string;
+  subSection?: string;
 }
 
 export type WordPos = 'ichidan' | 'godan' | 'iadj' | 'noun';
@@ -101,6 +168,7 @@ export interface QuizSessionHistoryEntry {
   id: string;
   completedAt: string;
   level: LevelFilter;
+  scopeLabel?: string;
   mode: QuizTypeChoice;
   correct: number;
   total: number;

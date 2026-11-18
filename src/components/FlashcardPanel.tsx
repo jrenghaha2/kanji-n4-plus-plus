@@ -12,10 +12,13 @@ import {
   X,
 } from 'lucide-react';
 import { KANJI, LEVELS } from '../data/kanjiData';
-import type { LevelFilter } from '../types/kanji';
+import type { AppDatasetMode, KanjiEntry, LevelFilter } from '../types/kanji';
 import { speakJP } from '../utils/tts';
 
 interface FlashcardPanelProps {
+  datasetMode?: AppDatasetMode;
+  dataset?: readonly KanjiEntry[];
+  scopeLabel?: string;
   levelFilter: LevelFilter;
   order: number[];
   pos: number;
@@ -46,6 +49,9 @@ interface FlashcardPanelProps {
 }
 
 export function FlashcardPanel({
+  datasetMode = 'n4',
+  dataset = KANJI,
+  scopeLabel,
   levelFilter,
   order,
   pos,
@@ -91,12 +97,17 @@ export function FlashcardPanel({
 
   const total = order.length;
   const isDone = pos >= total;
-  const currentItem = !isDone ? KANJI[order[pos]] : null;
+  const currentItem = !isDone ? dataset[order[pos]] : null;
   const progressPct = total === 0 || isDone ? 100 : (pos / total) * 100;
-  const levelLabel = LEVELS[levelFilter].label;
+  const levelLabel = scopeLabel ?? LEVELS[levelFilter].label;
+  const kLen = currentItem?.k.length ?? 0;
 
   const confirmScopeLabel =
-    levelFilter === 'all' ? 'Yakin? Ketuk lagi' : `Yakin? (level ${levelLabel}) ketuk lagi`;
+    datasetMode === 'irodori'
+      ? `Yakin? (${levelLabel}) ketuk lagi`
+      : levelFilter === 'all'
+        ? 'Yakin? Ketuk lagi'
+        : `Yakin? (level ${levelLabel}) ketuk lagi`;
 
   return (
     <section aria-label="Mode Kartu Flashcard" className="space-y-4">
@@ -151,8 +162,12 @@ export function FlashcardPanel({
           <p className="mt-2 text-sm text-slate-600 font-medium">
             {total === 0
               ? hardMode
-                ? 'Belum ada kanji sulit di level ini.'
-                : 'Semua kanji di level ini sudah hafal.'
+                ? datasetMode === 'irodori'
+                  ? 'Belum ada kosakata sulit di pilihan ini.'
+                  : 'Belum ada kanji sulit di level ini.'
+                : datasetMode === 'irodori'
+                  ? 'Semua kosakata di pilihan ini sudah hafal.'
+                  : 'Semua kanji di level ini sudah hafal.'
               : `${total} kartu diulas · ${sessionNewMaster} hafal baru · ${sessionHardCount} ditandai sulit`}
           </p>
 
@@ -196,7 +211,15 @@ export function FlashcardPanel({
                   onClick={onFlip}
                   className="w-full h-full flex flex-col items-center justify-center p-6 text-center rounded-2xl cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-600"
                 >
-                  <span className="font-jp text-6xl sm:text-8xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                  <span
+                    className={`font-jp font-extrabold text-slate-900 tracking-tight leading-tight max-w-full break-words ${
+                      kLen >= 6
+                        ? 'text-3xl sm:text-5xl'
+                        : kLen >= 4
+                          ? 'text-4xl sm:text-6xl'
+                          : 'text-6xl sm:text-8xl'
+                    }`}
+                  >
                     {currentItem?.k}
                   </span>
                   <span className="mt-5 text-xs sm:text-sm font-medium text-slate-500">
@@ -230,11 +253,20 @@ export function FlashcardPanel({
                   <span className="font-jp text-2xl sm:text-4xl font-extrabold text-indigo-700">
                     {currentItem?.r}
                   </span>
+                  {currentItem?.accent ? (
+                    <span className="mt-0.5 text-xs font-jp text-slate-500 font-medium">
+                      Aksen: {currentItem.accent}
+                    </span>
+                  ) : null}
                   <span className="mt-1.5 text-base sm:text-xl font-bold text-slate-900">
                     {currentItem?.m}
                   </span>
                   <span className="mt-1.5 text-xs font-semibold text-slate-500">
-                    {currentItem ? LEVELS[currentItem.dif].label : ''} · N4
+                    {currentItem
+                      ? datasetMode === 'irodori' && currentItem.chapter
+                        ? `Bab ${currentItem.chapter}${currentItem.subSection ? ` · ${currentItem.subSection}` : ''}`
+                        : `${LEVELS[currentItem.dif].label} · N4`
+                      : ''}
                     {currentItem && mastered.has(currentItem.id) ? ' · ✓ Hafal' : ''}
                     {currentItem && hardSet.has(currentItem.id) ? ' · ⚠ Sulit' : ''}
                   </span>

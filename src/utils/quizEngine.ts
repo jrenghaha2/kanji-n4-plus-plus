@@ -1,5 +1,6 @@
 import { KANJI } from '../data/kanjiData';
 import type {
+  IrodoriChapterFilter,
   KanjiEntry,
   LevelFilter,
   QuizModelKey,
@@ -63,10 +64,18 @@ export function shuffled<T>(arr: readonly T[], rng: () => number = Math.random):
   return copy;
 }
 
-export function getPoolIndices(levelFilter: LevelFilter, dataset: readonly KanjiEntry[] = KANJI): number[] {
+export function getPoolIndices(
+  levelFilter: LevelFilter,
+  dataset: readonly KanjiEntry[] = KANJI,
+  chapterFilter?: IrodoriChapterFilter
+): number[] {
   const out: number[] = [];
   for (let i = 0; i < dataset.length; i++) {
-    if (levelFilter === 'all' || dataset[i].dif === levelFilter) {
+    if (chapterFilter !== undefined) {
+      if (chapterFilter === 'all' || dataset[i].chapter === chapterFilter) {
+        out.push(i);
+      }
+    } else if (levelFilter === 'all' || dataset[i].dif === levelFilter) {
       out.push(i);
     }
   }
@@ -87,9 +96,10 @@ export interface QuizBankEntry {
 export function buildQuizBank(
   levelFilter: LevelFilter,
   choice: QuizTypeChoice,
-  dataset: readonly KanjiEntry[] = KANJI
+  dataset: readonly KanjiEntry[] = KANJI,
+  chapterFilter?: IrodoriChapterFilter
 ): QuizBankEntry[] {
-  const indices = getPoolIndices(levelFilter, dataset);
+  const indices = getPoolIndices(levelFilter, dataset, chapterFilter);
   const keys = getActiveTypeKeys(choice);
   const bank: QuizBankEntry[] = [];
   for (const kanjiIdx of indices) {
@@ -173,7 +183,8 @@ export function pickDistractors(
   exMeta: SentenceBlank | null,
   levelFilter: LevelFilter = 'all',
   dataset: readonly KanjiEntry[] = KANJI,
-  rng: () => number = Math.random
+  rng: () => number = Math.random,
+  chapterFilter?: IrodoriChapterFilter
 ): KanjiEntry[] {
   const targetDisp = dispOf(item, key, exMeta);
 
@@ -186,13 +197,19 @@ export function pickDistractors(
     return true;
   };
 
-  // Prioritize candidates from the active level filter so Easy quizzes don't pull Hard words.
-  const sameLevelAll = dataset.filter(
-    it => (levelFilter === 'all' || it.dif === levelFilter) && isEligibleBase(it)
-  );
-  const crossLevelAll = levelFilter === 'all'
-    ? []
-    : dataset.filter(it => it.dif !== levelFilter && isEligibleBase(it));
+  const matchesActiveScope = (it: KanjiEntry): boolean => {
+    if (chapterFilter !== undefined) {
+      return chapterFilter === 'all' || it.chapter === chapterFilter;
+    }
+    return levelFilter === 'all' || it.dif === levelFilter;
+  };
+
+  // Prioritize candidates from the active level/chapter filter so focused quizzes keep relevant distractors.
+  const sameLevelAll = dataset.filter(it => matchesActiveScope(it) && isEligibleBase(it));
+  const crossLevelAll =
+    (chapterFilter !== undefined ? chapterFilter === 'all' : levelFilter === 'all')
+      ? []
+      : dataset.filter(it => !matchesActiveScope(it) && isEligibleBase(it));
 
   const scoreCandidate = (it: KanjiEntry, isSameLevel: boolean): number => {
     let s = isSameLevel ? 100 : 0;
@@ -237,12 +254,12 @@ export function pickDistractors(
   const seenIds = new Set<string>([item.id]);
   const out: KanjiEntry[] = [];
 
-  for (let tierIdx = 0; tierIdx < tiers.length && out.length < count; tierIdx++) {
+    for (let tierIdx = 0; tierIdx < tiers.length && out.length < count; tierIdx++) {
     const tierCandidates = tiers[tierIdx]
       .filter(it => !seenIds.has(it.id))
       .map(it => ({
         it,
-        s: scoreCandidate(it, levelFilter === 'all' || it.dif === levelFilter),
+        s: scoreCandidate(it, matchesActiveScope(it)),
       }))
       .sort((a, b) => b.s - a.s);
 
@@ -264,10 +281,20 @@ export function makeQuestion(
   typeKey: QuizModelKey,
   levelFilter: LevelFilter = 'all',
   dataset: readonly KanjiEntry[] = KANJI,
-  rng: () => number = Math.random
+  rng: () => number = Math.random,
+  chapterFilter?: IrodoriChapterFilter
 ): QuizQuestion {
   const exMeta = typeKey === 'ex2k' ? analyzeSentenceBlank(item) : null;
-  const distractors = pickDistractors(item, typeKey, 3, exMeta, levelFilter, dataset, rng);
+  const distractors = pickDistractors(
+    item,
+    typeKey,
+    3,
+    exMeta,
+    levelFilter,
+    dataset,
+    rng,
+    chapterFilter
+  );
   const options: QuizOption[] = shuffled([item, ...distractors], rng).map(optItem => ({
     item: optItem,
     label: dispOf(optItem, typeKey, exMeta),
@@ -286,9 +313,10 @@ export function buildQuizSession(
   choice: QuizTypeChoice,
   requestedCount: number | 'all',
   dataset: readonly KanjiEntry[] = KANJI,
-  rng: () => number = Math.random
+  rng: () => number = Math.random,
+  chapterFilter?: IrodoriChapterFilter
 ): QuizQuestion[] {
-  const bank = shuffled(buildQuizBank(levelFilter, choice, dataset), rng);
+  const bank = shuffled(buildQuizBank(levelFilter, choice, dataset, chapterFilter), rng);
   if (bank.length === 0) return [];
   const count =
     requestedCount === 'all'
@@ -296,7 +324,7 @@ export function buildQuizSession(
       : Math.max(1, Math.min(Math.floor(requestedCount) || 10, bank.length));
 
   return bank.slice(0, count).map(entry =>
-    makeQuestion(dataset[entry.kanjiIdx], entry.typeKey, levelFilter, dataset, rng)
+    makeQuestion(dataset[entry.kanjiIdx], entry.typeKey, levelFilter, dataset, rng, chapterFilter)
   );
 }
 

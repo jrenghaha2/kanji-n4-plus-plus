@@ -14,13 +14,16 @@ import { doc, getDoc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'fir
 import { AppHeader } from './components/AppHeader';
 import { AuthModal } from './components/AuthModal';
 import { FlashcardPanel } from './components/FlashcardPanel';
+import { IrodoriBookMenu } from './components/IrodoriBookMenu';
+import { IrodoriEmptyState } from './components/IrodoriEmptyState';
 import { KanjiListPanel } from './components/KanjiListPanel';
 import { ProfileModal } from './components/ProfileModal';
 import { QuizPanel } from './components/QuizPanel';
 import { RestoreModal, type PendingRestoreState } from './components/RestoreModal';
 import { Sidebar } from './components/Sidebar';
 import { ToastBanner } from './components/ToastBanner';
-import { KANJI } from './data/kanjiData';
+import { IRODORI_BOOKS, IRODORI_BOOK_ORDER } from './data/irodoriBooks';
+import { KANJI, VALID_KANJI_IDS } from './data/kanjiData';
 import {
   OperationType,
   auth,
@@ -32,7 +35,15 @@ import {
   handleFirestoreError,
   isFirestoreQuotaError,
 } from './firebase';
-import type { AppTab, LevelFilter, ToastMessage } from './types/kanji';
+import type {
+  AppDatasetMode,
+  AppTab,
+  IrodoriBookId,
+  IrodoriChapterFilter,
+  KanjiEntry,
+  LevelFilter,
+  ToastMessage,
+} from './types/kanji';
 import {
   areSetsEqual,
   buildUserProfileWriteData,
@@ -51,6 +62,7 @@ import {
   buildBackupPayload,
   clearStoredProgress,
   commitProgressTransaction,
+  commitScopedProgressTransaction,
   getStoredOwnerUid,
   safeLoadSet,
   setStoredOwnerUid,
@@ -143,8 +155,11 @@ function mapFirebaseAuthError(err: unknown): {
 }
 
 export default function App() {
+  const [datasetMode, setDatasetMode] = useState<AppDatasetMode>('n4');
+  const [irodoriBookId, setIrodoriBookId] = useState<IrodoriBookId>('dasar1');
   const [activeTab, setActiveTab] = useState<AppTab>('card');
   const [levelFilter, setLevelFilter] = useState<LevelFilter>('all');
+  const [chapterFilter, setChapterFilter] = useState<IrodoriChapterFilter>('all');
 
   const [mastered, setMastered] = useState<Set<string>>(() => safeLoadSet(LS_KEY));
   const [hardSet, setHardSet] = useState<Set<string>>(() => {
@@ -152,6 +167,23 @@ export default function App() {
     const h = safeLoadSet(HARD_KEY);
     m.forEach(id => h.delete(id));
     return h;
+  });
+
+  const [irodoriProgress, setIrodoriProgress] = useState<
+    Record<IrodoriBookId, { mastered: Set<string>; hard: Set<string> }>
+  >(() => {
+    const initial = {} as Record<
+      IrodoriBookId,
+      { mastered: Set<string>; hard: Set<string> }
+    >;
+    for (const bookId of IRODORI_BOOK_ORDER) {
+      const cfg = IRODORI_BOOKS[bookId];
+      const m = safeLoadSet(cfg.lsKey, cfg.validIds);
+      const h = safeLoadSet(cfg.hardKey, cfg.validIds);
+      m.forEach(id => h.delete(id));
+      initial[bookId] = { mastered: m, hard: h };
+    }
+    return initial;
   });
 
   const [user, setUser] = useState<User | null>(null);
@@ -456,6 +488,43 @@ export default function App() {
     };
   }, [authReady, user, authVersion, reportFirestoreFailure, showToast]);
 
+  const activeIrodoriBook = IRODORI_BOOKS[irodoriBookId];
+  const activeIrodoriProgress = irodoriProgress[irodoriBookId];
+  const activeDataset: readonly KanjiEntry[] =
+    datasetMode === 'irodori' ? activeIrodoriBook.data : KANJI;
+  const activeMastered =
+    datasetMode === 'irodori' ? activeIrodoriProgress.mastered : mastered;
+  const activeHardSet =
+    datasetMode === 'irodori' ? activeIrodoriProgress.hard : hardSet;
+  const activeValidIds =
+    datasetMode === 'irodori' ? activeIrodoriBook.validIds : VALID_KANJI_IDS;
+  const activeScopeLabel =
+    datasetMode === 'irodori'
+      ? chapterFilter === 'all'
+        ? 'Semua Bab (1–18)'
+        : activeIrodoriBook.chapters[chapterFilter].label
+      : levelFilter;
+
+  const computeCardPoolFor = useCallback(
+    (
+      mode: AppDatasetMode,
+      bookId: IrodoriBookId,
+      lv: LevelFilter,
+      ch: IrodoriChapterFilter,
+      hideM: boolean,
+      onlyH: boolean,
+      mSet: Set<string>,
+      hSet: Set<string>
+    ) => {
+      const ds = mode === 'irodori' ? IRODORI_BOOKS[bookId].data : KANJI;
+      const pool = getPoolIndices(lv, ds, mode === 'irodori' ? ch : undefined);
+      return pool.filter(
+        i => (!hideM || !mSet.has(ds[i].id)) && (!onlyH || hSet.has(ds[i].id))
+      );
+    },
+    []
+  );
+
   const computeCardPool = useCallback(
     (
       lv: LevelFilter,
@@ -463,12 +532,18 @@ export default function App() {
       onlyH: boolean,
       mSet: Set<string>,
       hSet: Set<string>
-    ) => {
-      return getPoolIndices(lv, KANJI).filter(
-        i => (!hideM || !mSet.has(KANJI[i].id)) && (!onlyH || hSet.has(KANJI[i].id))
-      );
-    },
-    []
+    ) =>
+      computeCardPoolFor(
+        datasetMode,
+        irodoriBookId,
+        lv,
+        chapterFilter,
+        hideM,
+        onlyH,
+        mSet,
+        hSet
+      ),
+    [computeCardPoolFor, datasetMode, irodoriBookId, chapterFilter]
   );
 
   const rebuildOrder = useCallback((indices: number[], shouldShuffle: boolean) => {
@@ -479,14 +554,22 @@ export default function App() {
     setSessionNewMaster(0);
   }, []);
 
-  const levelIndices = useMemo(() => getPoolIndices(levelFilter, KANJI), [levelFilter]);
+  const levelIndices = useMemo(
+    () =>
+      getPoolIndices(
+        levelFilter,
+        activeDataset,
+        datasetMode === 'irodori' ? chapterFilter : undefined
+      ),
+    [levelFilter, activeDataset, datasetMode, chapterFilter]
+  );
   const levelMasteredCount = useMemo(
-    () => levelIndices.filter(i => mastered.has(KANJI[i].id)).length,
-    [levelIndices, mastered]
+    () => levelIndices.filter(i => activeMastered.has(activeDataset[i].id)).length,
+    [levelIndices, activeMastered, activeDataset]
   );
   const levelHardCount = useMemo(
-    () => levelIndices.filter(i => hardSet.has(KANJI[i].id)).length,
-    [levelIndices, hardSet]
+    () => levelIndices.filter(i => activeHardSet.has(activeDataset[i].id)).length,
+    [levelIndices, activeHardSet, activeDataset]
   );
 
   const syncProgressToCloud = useCallback(
@@ -524,6 +607,29 @@ export default function App() {
 
   const applyProgressChange = useCallback(
     (nextMastered: Set<string>, nextHard: Set<string>): boolean => {
+      if (datasetMode === 'irodori') {
+        const cfg = IRODORI_BOOKS[irodoriBookId];
+        const cleanM = new Set([...nextMastered].filter(id => cfg.validIds.has(id)));
+        const cleanH = new Set(
+          [...nextHard].filter(id => cfg.validIds.has(id) && !cleanM.has(id))
+        );
+        const tx = commitScopedProgressTransaction(
+          cfg.lsKey,
+          cfg.hardKey,
+          cleanM,
+          cleanH
+        );
+        if (!tx.ok) {
+          showToast('error', 'Penyimpanan Gagal', tx.error);
+          return false;
+        }
+        setIrodoriProgress(prev => ({
+          ...prev,
+          [irodoriBookId]: { mastered: cleanM, hard: cleanH },
+        }));
+        return true;
+      }
+
       const clean = sanitizeProgressLists(nextMastered, nextHard);
       const cleanM = new Set(clean.mastered);
       const cleanH = new Set(clean.hard);
@@ -545,7 +651,7 @@ export default function App() {
       setHardSet(cleanH);
       return true;
     },
-    [showToast, user, syncProgressToCloud]
+    [datasetMode, irodoriBookId, showToast, user, syncProgressToCloud]
   );
 
   const clearAuthNotices = useCallback(() => {
@@ -822,7 +928,13 @@ export default function App() {
       const emptyH = new Set<string>();
       setMastered(emptyM);
       setHardSet(emptyH);
-      const nextPool = computeCardPool(levelFilter, hideMastered, hardMode, emptyM, emptyH);
+      const nextPool = computeCardPool(
+        levelFilter,
+        hideMastered,
+        hardMode,
+        datasetMode === 'irodori' ? activeIrodoriProgress.mastered : emptyM,
+        datasetMode === 'irodori' ? activeIrodoriProgress.hard : emptyH
+      );
       rebuildOrder(nextPool, shuffleOn);
       showToast(
         'info',
@@ -838,25 +950,147 @@ export default function App() {
     } finally {
       setAuthBusy(false);
     }
-  }, [authBusy, computeCardPool, levelFilter, hideMastered, hardMode, rebuildOrder, shuffleOn, showToast]);
+  }, [
+    authBusy,
+    computeCardPool,
+    levelFilter,
+    hideMastered,
+    hardMode,
+    datasetMode,
+    activeIrodoriProgress,
+    rebuildOrder,
+    shuffleOn,
+    showToast,
+  ]);
+
+  const handleToggleDatasetMode = useCallback(() => {
+    const nextMode: AppDatasetMode = datasetMode === 'n4' ? 'irodori' : 'n4';
+    setDatasetMode(nextMode);
+    const nextM = nextMode === 'irodori' ? activeIrodoriProgress.mastered : mastered;
+    const nextH = nextMode === 'irodori' ? activeIrodoriProgress.hard : hardSet;
+    const nextPool = computeCardPoolFor(
+      nextMode,
+      irodoriBookId,
+      levelFilter,
+      chapterFilter,
+      hideMastered,
+      hardMode,
+      nextM,
+      nextH
+    );
+    rebuildOrder(nextPool, shuffleOn);
+  }, [
+    datasetMode,
+    activeIrodoriProgress,
+    mastered,
+    hardSet,
+    computeCardPoolFor,
+    irodoriBookId,
+    levelFilter,
+    chapterFilter,
+    hideMastered,
+    hardMode,
+    rebuildOrder,
+    shuffleOn,
+  ]);
+
+  const handleSelectIrodoriBook = useCallback(
+    (nextBookId: IrodoriBookId) => {
+      if (nextBookId === irodoriBookId && datasetMode === 'irodori') return;
+      setIrodoriBookId(nextBookId);
+      setChapterFilter('all');
+      const nextBookProgress = irodoriProgress[nextBookId];
+      const nextPool = computeCardPoolFor(
+        'irodori',
+        nextBookId,
+        levelFilter,
+        'all',
+        hideMastered,
+        hardMode,
+        nextBookProgress.mastered,
+        nextBookProgress.hard
+      );
+      rebuildOrder(nextPool, shuffleOn);
+    },
+    [
+      irodoriBookId,
+      datasetMode,
+      irodoriProgress,
+      computeCardPoolFor,
+      levelFilter,
+      hideMastered,
+      hardMode,
+      rebuildOrder,
+      shuffleOn,
+    ]
+  );
 
   const handleSelectLevel = useCallback(
     (nextLevel: LevelFilter) => {
       if (nextLevel === levelFilter) return;
       setLevelFilter(nextLevel);
-      const nextPool = computeCardPool(nextLevel, hideMastered, hardMode, mastered, hardSet);
+      const nextPool = computeCardPoolFor(
+        'n4',
+        irodoriBookId,
+        nextLevel,
+        chapterFilter,
+        hideMastered,
+        hardMode,
+        mastered,
+        hardSet
+      );
       rebuildOrder(nextPool, shuffleOn);
     },
-    [levelFilter, computeCardPool, hideMastered, hardMode, mastered, hardSet, rebuildOrder, shuffleOn]
+    [
+      levelFilter,
+      computeCardPoolFor,
+      irodoriBookId,
+      chapterFilter,
+      hideMastered,
+      hardMode,
+      mastered,
+      hardSet,
+      rebuildOrder,
+      shuffleOn,
+    ]
+  );
+
+  const handleSelectChapter = useCallback(
+    (nextChapter: IrodoriChapterFilter) => {
+      if (nextChapter === chapterFilter) return;
+      setChapterFilter(nextChapter);
+      const nextPool = computeCardPoolFor(
+        'irodori',
+        irodoriBookId,
+        levelFilter,
+        nextChapter,
+        hideMastered,
+        hardMode,
+        activeIrodoriProgress.mastered,
+        activeIrodoriProgress.hard
+      );
+      rebuildOrder(nextPool, shuffleOn);
+    },
+    [
+      chapterFilter,
+      computeCardPoolFor,
+      irodoriBookId,
+      levelFilter,
+      hideMastered,
+      hardMode,
+      activeIrodoriProgress,
+      rebuildOrder,
+      shuffleOn,
+    ]
   );
 
   const handleMarkMastered = useCallback(() => {
     const idx = order[pos];
     if (idx === undefined) return;
-    const item = KANJI[idx];
+    const item = activeDataset[idx];
     const { nextMastered, nextHard, isNewMastered } = markKanjiMastered(
-      mastered,
-      hardSet,
+      activeMastered,
+      activeHardSet,
       item.id
     );
 
@@ -864,13 +1098,13 @@ export default function App() {
     if (isNewMastered) setSessionNewMaster(v => v + 1);
     setPos(p => p + 1);
     setFlipped(false);
-  }, [order, pos, mastered, hardSet, applyProgressChange]);
+  }, [order, pos, activeDataset, activeMastered, activeHardSet, applyProgressChange]);
 
   const handleMarkHard = useCallback(() => {
     const idx = order[pos];
     if (idx === undefined) return;
-    const item = KANJI[idx];
-    const { nextMastered, nextHard } = markKanjiHard(mastered, hardSet, item.id);
+    const item = activeDataset[idx];
+    const { nextMastered, nextHard } = markKanjiHard(activeMastered, activeHardSet, item.id);
 
     if (!applyProgressChange(nextMastered, nextHard)) return;
     setSessionHard(prev => {
@@ -880,75 +1114,159 @@ export default function App() {
     });
     setPos(p => p + 1);
     setFlipped(false);
-  }, [order, pos, mastered, hardSet, applyProgressChange]);
+  }, [order, pos, activeDataset, activeMastered, activeHardSet, applyProgressChange]);
 
   const handleForgetCurrent = useCallback(() => {
     const idx = order[pos];
     if (idx === undefined) return;
-    const item = KANJI[idx];
-    if (!mastered.has(item.id)) return;
-    const nextM = new Set(mastered);
+    const item = activeDataset[idx];
+    if (!activeMastered.has(item.id)) return;
+    const nextM = new Set(activeMastered);
     nextM.delete(item.id);
-    applyProgressChange(nextM, new Set(hardSet));
-  }, [order, pos, mastered, hardSet, applyProgressChange]);
+    applyProgressChange(nextM, new Set(activeHardSet));
+  }, [order, pos, activeDataset, activeMastered, activeHardSet, applyProgressChange]);
 
   const handleResetAllLevelMastered = useCallback(() => {
-    const nextM = new Set(mastered);
-    levelIndices.forEach(i => nextM.delete(KANJI[i].id));
-    if (applyProgressChange(nextM, new Set(hardSet))) {
-      showToast('info', 'Hafalan Direset', `Data hafalan untuk level ${levelFilter} telah dihapus.`);
+    const nextM = new Set(activeMastered);
+    levelIndices.forEach(i => nextM.delete(activeDataset[i].id));
+    if (applyProgressChange(nextM, new Set(activeHardSet))) {
+      showToast(
+        'info',
+        'Hafalan Direset',
+        `Data hafalan untuk ${activeScopeLabel} telah dihapus.`
+      );
     }
-  }, [mastered, hardSet, levelIndices, applyProgressChange, showToast, levelFilter]);
+  }, [
+    activeMastered,
+    activeHardSet,
+    levelIndices,
+    activeDataset,
+    applyProgressChange,
+    showToast,
+    activeScopeLabel,
+  ]);
 
   const handleUnhardCurrent = useCallback(() => {
     const idx = order[pos];
     if (idx === undefined) return;
-    const item = KANJI[idx];
-    if (!hardSet.has(item.id)) return;
-    const nextH = new Set(hardSet);
+    const item = activeDataset[idx];
+    if (!activeHardSet.has(item.id)) return;
+    const nextH = new Set(activeHardSet);
     nextH.delete(item.id);
-    if (!applyProgressChange(new Set(mastered), nextH)) return;
+    if (!applyProgressChange(new Set(activeMastered), nextH)) return;
     setSessionHard(prev => {
       const next = new Set(prev);
       next.delete(idx);
       return next;
     });
-  }, [order, pos, mastered, hardSet, applyProgressChange]);
+  }, [order, pos, activeDataset, activeMastered, activeHardSet, applyProgressChange]);
 
   const handleClearLevelHard = useCallback(() => {
-    const nextH = new Set(hardSet);
-    levelIndices.forEach(i => nextH.delete(KANJI[i].id));
-    if (applyProgressChange(new Set(mastered), nextH)) {
+    const nextH = new Set(activeHardSet);
+    levelIndices.forEach(i => nextH.delete(activeDataset[i].id));
+    if (applyProgressChange(new Set(activeMastered), nextH)) {
       setSessionHard(new Set());
-      showToast('info', 'Daftar Sulit Dihapus', `Daftar sulit untuk level ${levelFilter} telah dikosongkan.`);
+      showToast(
+        'info',
+        'Daftar Sulit Dihapus',
+        `Daftar sulit untuk ${activeScopeLabel} telah dikosongkan.`
+      );
     }
-  }, [hardSet, mastered, levelIndices, applyProgressChange, showToast, levelFilter]);
+  }, [
+    activeHardSet,
+    activeMastered,
+    levelIndices,
+    activeDataset,
+    applyProgressChange,
+    showToast,
+    activeScopeLabel,
+  ]);
 
   const handleToggleHideMastered = useCallback(() => {
     const nextHide = !hideMastered;
     setHideMastered(nextHide);
-    const nextPool = computeCardPool(levelFilter, nextHide, hardMode, mastered, hardSet);
+    const nextPool = computeCardPool(
+      levelFilter,
+      nextHide,
+      hardMode,
+      activeMastered,
+      activeHardSet
+    );
     rebuildOrder(nextPool, shuffleOn);
-  }, [hideMastered, computeCardPool, levelFilter, hardMode, mastered, hardSet, rebuildOrder, shuffleOn]);
+  }, [
+    hideMastered,
+    computeCardPool,
+    levelFilter,
+    hardMode,
+    activeMastered,
+    activeHardSet,
+    rebuildOrder,
+    shuffleOn,
+  ]);
 
   const handleToggleShuffle = useCallback(() => {
     const nextShuffle = !shuffleOn;
     setShuffleOn(nextShuffle);
-    const nextPool = computeCardPool(levelFilter, hideMastered, hardMode, mastered, hardSet);
+    const nextPool = computeCardPool(
+      levelFilter,
+      hideMastered,
+      hardMode,
+      activeMastered,
+      activeHardSet
+    );
     rebuildOrder(nextPool, nextShuffle);
-  }, [shuffleOn, computeCardPool, levelFilter, hideMastered, hardMode, mastered, hardSet, rebuildOrder]);
+  }, [
+    shuffleOn,
+    computeCardPool,
+    levelFilter,
+    hideMastered,
+    hardMode,
+    activeMastered,
+    activeHardSet,
+    rebuildOrder,
+  ]);
 
   const handleToggleHardMode = useCallback(() => {
     const nextHardMode = !hardMode;
     setHardMode(nextHardMode);
-    const nextPool = computeCardPool(levelFilter, hideMastered, nextHardMode, mastered, hardSet);
+    const nextPool = computeCardPool(
+      levelFilter,
+      hideMastered,
+      nextHardMode,
+      activeMastered,
+      activeHardSet
+    );
     rebuildOrder(nextPool, shuffleOn);
-  }, [hardMode, computeCardPool, levelFilter, hideMastered, mastered, hardSet, rebuildOrder, shuffleOn]);
+  }, [
+    hardMode,
+    computeCardPool,
+    levelFilter,
+    hideMastered,
+    activeMastered,
+    activeHardSet,
+    rebuildOrder,
+    shuffleOn,
+  ]);
 
   const handleRestartSession = useCallback(() => {
-    const nextPool = computeCardPool(levelFilter, hideMastered, hardMode, mastered, hardSet);
+    const nextPool = computeCardPool(
+      levelFilter,
+      hideMastered,
+      hardMode,
+      activeMastered,
+      activeHardSet
+    );
     rebuildOrder(nextPool, shuffleOn);
-  }, [computeCardPool, levelFilter, hideMastered, hardMode, mastered, hardSet, rebuildOrder, shuffleOn]);
+  }, [
+    computeCardPool,
+    levelFilter,
+    hideMastered,
+    hardMode,
+    activeMastered,
+    activeHardSet,
+    rebuildOrder,
+    shuffleOn,
+  ]);
 
   const handleRepeatSessionHard = useCallback(() => {
     rebuildOrder([...sessionHard], shuffleOn);
@@ -989,23 +1307,25 @@ export default function App() {
         handleMarkHard();
       } else if (e.key === 'a' || e.key === 'A') {
         e.preventDefault();
-        const item = KANJI[order[pos]];
+        const item = activeDataset[order[pos]];
         if (item) speakJP(item.r);
       }
     };
 
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [activeTab, anyModalOpen, pos, order, handleMarkMastered, handleMarkHard]);
+  }, [activeTab, anyModalOpen, pos, order, activeDataset, handleMarkMastered, handleMarkHard]);
 
   const handleExport = useCallback(() => {
     try {
-      const payload = buildBackupPayload(mastered, hardSet);
+      const payload = buildBackupPayload(activeMastered, activeHardSet);
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `backup-kanji-n4-${new Date().toISOString().slice(0, 10)}.json`;
+      const prefix =
+        datasetMode === 'irodori' ? `backup-irodori-${irodoriBookId}` : 'backup-kanji-n4';
+      a.download = `${prefix}-${new Date().toISOString().slice(0, 10)}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -1013,12 +1333,12 @@ export default function App() {
       showToast(
         'success',
         'Backup Diunduh',
-        `${mastered.size} hafal & ${hardSet.size} sulit diekspor ke JSON.`
+        `${activeMastered.size} hafal & ${activeHardSet.size} sulit diekspor ke JSON.`
       );
     } catch {
       showToast('error', 'Backup Gagal', 'Gagal membuat file backup JSON.');
     }
-  }, [mastered, hardSet, showToast]);
+  }, [activeMastered, activeHardSet, datasetMode, irodoriBookId, showToast]);
 
   const restoreFocusToButton = useCallback(() => {
     requestAnimationFrame(() => {
@@ -1057,7 +1377,7 @@ export default function App() {
       reader.onload = ev => {
         try {
           const text = typeof ev.target?.result === 'string' ? ev.target.result : '';
-          const parsed = validateAndParseBackup(text);
+          const parsed = validateAndParseBackup(text, activeValidIds);
           setToast(null);
           setPendingRestore({ parsed, fileName: file.name });
         } catch (err) {
@@ -1073,7 +1393,7 @@ export default function App() {
       };
       reader.readAsText(file);
     },
-    [showToast, restoreFocusToButton]
+    [showToast, restoreFocusToButton, activeValidIds]
   );
 
   const restorePreviews = useMemo(() => {
@@ -1081,15 +1401,15 @@ export default function App() {
       return { mergedMastered: 0, mergedHard: 0, cleanImpHard: 0 };
     }
     const { impMastered, impHard } = pendingRestore.parsed;
-    const mergedM = new Set([...mastered, ...impMastered]);
-    const mergedH = new Set([...hardSet, ...impHard].filter(id => !mergedM.has(id)));
+    const mergedM = new Set([...activeMastered, ...impMastered]);
+    const mergedH = new Set([...activeHardSet, ...impHard].filter(id => !mergedM.has(id)));
     const cleanImpH = impHard.filter(id => !impMastered.includes(id));
     return {
       mergedMastered: mergedM.size,
       mergedHard: mergedH.size,
       cleanImpHard: cleanImpH.length,
     };
-  }, [pendingRestore, mastered, hardSet]);
+  }, [pendingRestore, activeMastered, activeHardSet]);
 
   const handleCloseRestoreModal = useCallback(() => {
     setPendingRestore(null);
@@ -1105,8 +1425,8 @@ export default function App() {
       let nextHard: Set<string>;
 
       if (mode === 'merge') {
-        nextMastered = new Set(mastered);
-        nextHard = new Set(hardSet);
+        nextMastered = new Set(activeMastered);
+        nextHard = new Set(activeHardSet);
         impMastered.forEach(id => {
           nextMastered.add(id);
           nextHard.delete(id);
@@ -1140,8 +1460,8 @@ export default function App() {
     },
     [
       pendingRestore,
-      mastered,
-      hardSet,
+      activeMastered,
+      activeHardSet,
       applyProgressChange,
       restoreFocusToButton,
       computeCardPool,
@@ -1158,6 +1478,9 @@ export default function App() {
     customDisplayName || user?.displayName || user?.email?.split('@')[0] || '';
   const effectiveAvatarUrl = customAvatarUrl || user?.photoURL || '';
 
+  const isIrodoriEmptyBook =
+    datasetMode === 'irodori' && activeIrodoriBook.data.length === 0;
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
       <div
@@ -1165,6 +1488,9 @@ export default function App() {
         className="flex-1 flex flex-col"
       >
         <AppHeader
+          datasetMode={datasetMode}
+          irodoriBookTitle={activeIrodoriBook.label}
+          onToggleDatasetMode={handleToggleDatasetMode}
           masteredCount={levelMasteredCount}
           totalCount={levelIndices.length}
           restoreBtnRef={restoreBtnRef}
@@ -1187,17 +1513,38 @@ export default function App() {
         />
 
         <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+          {datasetMode === 'irodori' ? (
+            <IrodoriBookMenu
+              selectedBookId={irodoriBookId}
+              onSelectBook={handleSelectIrodoriBook}
+            />
+          ) : null}
+
           <div className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] gap-6 lg:gap-8 items-start">
             <Sidebar
+              datasetMode={datasetMode}
+              irodoriBook={activeIrodoriBook}
               activeTab={activeTab}
               levelFilter={levelFilter}
+              chapterFilter={chapterFilter}
               onSelectTab={setActiveTab}
               onSelectLevel={handleSelectLevel}
+              onSelectChapter={handleSelectChapter}
             />
 
             <div className="min-w-0">
-              {activeTab === 'card' ? (
+              {isIrodoriEmptyBook ? (
+                <IrodoriEmptyState
+                  book={activeIrodoriBook}
+                  onSwitchToDasar1={() => handleSelectIrodoriBook('dasar1')}
+                />
+              ) : null}
+
+              {!isIrodoriEmptyBook && activeTab === 'card' ? (
                 <FlashcardPanel
+                  datasetMode={datasetMode}
+                  dataset={activeDataset}
+                  scopeLabel={activeScopeLabel}
                   levelFilter={levelFilter}
                   order={order}
                   pos={pos}
@@ -1205,8 +1552,8 @@ export default function App() {
                   hideMastered={hideMastered}
                   shuffleOn={shuffleOn}
                   hardMode={hardMode}
-                  mastered={mastered}
-                  hardSet={hardSet}
+                  mastered={activeMastered}
+                  hardSet={activeHardSet}
                   levelHardCount={levelHardCount}
                   levelMasteredCount={levelMasteredCount}
                   sessionHardCount={sessionHard.size}
@@ -1236,17 +1583,23 @@ export default function App() {
                 />
               ) : null}
 
-              {activeTab === 'list' ? (
+              {!isIrodoriEmptyBook && activeTab === 'list' ? (
                 <KanjiListPanel
+                  datasetMode={datasetMode}
+                  irodoriBook={activeIrodoriBook}
                   levelFilter={levelFilter}
-                  mastered={mastered}
-                  hardSet={hardSet}
+                  chapterFilter={chapterFilter}
+                  mastered={activeMastered}
+                  hardSet={activeHardSet}
                 />
               ) : null}
 
-              {activeTab === 'quiz' ? (
+              {!isIrodoriEmptyBook && activeTab === 'quiz' ? (
                 <QuizPanel
+                  datasetMode={datasetMode}
+                  irodoriBook={activeIrodoriBook}
                   levelFilter={levelFilter}
+                  chapterFilter={chapterFilter}
                   modalOpen={anyModalOpen}
                 />
               ) : null}
@@ -1255,9 +1608,13 @@ export default function App() {
         </main>
 
         <footer className="border-t border-slate-200 bg-white/70 py-5 px-4 text-center text-xs text-slate-500">
-          {user
-            ? `500 kosakata kanji JLPT N4 · hingga 2.500 variasi soal kuis · akun ${effectiveDisplayName || user.email || 'terhubung'}${user.emailVerified ? ' (cloud aktif)' : ' (menunggu verifikasi email)'}`
-            : '500 kosakata kanji JLPT N4 · hingga 2.500 variasi soal kuis · tersimpan lokal (masuk untuk sinkronisasi cloud)'}
+          {datasetMode === 'irodori'
+            ? activeIrodoriBook.data.length > 0
+              ? `${activeIrodoriBook.data.length} kosakata & kanji ${activeIrodoriBook.label} (Bab 1–18) · progres tersimpan lokal di perangkat ini`
+              : `${activeIrodoriBook.label} · belum ada data materi`
+            : user
+              ? `500 kosakata kanji JLPT N4 · hingga 2.500 variasi soal kuis · akun ${effectiveDisplayName || user.email || 'terhubung'}${user.emailVerified ? ' (cloud aktif)' : ' (menunggu verifikasi email)'}`
+              : '500 kosakata kanji JLPT N4 · hingga 2.500 variasi soal kuis · tersimpan lokal (masuk untuk sinkronisasi cloud)'}
         </footer>
       </div>
 
@@ -1289,8 +1646,8 @@ export default function App() {
 
       <RestoreModal
         pending={pendingRestore}
-        currentMasteredCount={mastered.size}
-        currentHardCount={hardSet.size}
+        currentMasteredCount={activeMastered.size}
+        currentHardCount={activeHardSet.size}
         mergedMasteredCount={restorePreviews.mergedMastered}
         mergedHardCount={restorePreviews.mergedHard}
         cleanBackupHardCount={restorePreviews.cleanImpHard}

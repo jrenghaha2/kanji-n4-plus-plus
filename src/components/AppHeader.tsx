@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { User } from 'firebase/auth';
 import {
   AlertCircle,
+  ArrowLeft,
+  BookOpen,
   Camera,
   ChevronDown,
   Cloud,
@@ -12,8 +14,12 @@ import {
   RefreshCw,
   Users,
 } from 'lucide-react';
+import type { AppDatasetMode } from '../types/kanji';
 
 interface AppHeaderProps {
+  datasetMode: AppDatasetMode;
+  irodoriBookTitle?: string;
+  onToggleDatasetMode: () => void;
   masteredCount: number;
   totalCount: number;
   restoreBtnRef: RefObject<HTMLButtonElement | null>;
@@ -44,6 +50,9 @@ function getProviderLabel(user: User): string {
 }
 
 export function AppHeader({
+  datasetMode,
+  irodoriBookTitle = 'Irodori Dasar 1',
+  onToggleDatasetMode,
   masteredCount,
   totalCount,
   restoreBtnRef,
@@ -112,21 +121,49 @@ export function AppHeader({
   const isVerified = Boolean(user?.emailVerified);
 
   return (
-    <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200">
-      <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-4">
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
+    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200">
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 py-2 lg:py-0 lg:h-16 flex flex-wrap lg:flex-nowrap items-center justify-between gap-x-2 gap-y-2 sm:gap-x-3">
+        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 shrink-0 order-1">
           <span
             aria-hidden="true"
-            className="inline-flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-indigo-600 text-white font-jp font-bold text-base sm:text-lg shrink-0"
+            className={`inline-flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-xl text-white font-jp font-bold text-base sm:text-lg shrink-0 ${
+              datasetMode === 'irodori' ? 'bg-teal-600' : 'bg-indigo-600'
+            }`}
           >
-            日
+            {datasetMode === 'irodori' ? '彩' : '日'}
           </span>
           <span className="font-bold text-sm sm:text-lg tracking-tight text-slate-900 whitespace-nowrap">
-            N4 Kanji
+            {datasetMode === 'irodori' ? irodoriBookTitle : 'N4 Kanji'}
           </span>
         </div>
 
-        <div className="text-xs sm:text-sm font-medium text-slate-600 font-mono-num whitespace-nowrap shrink-0">
+        <div className="w-full lg:w-auto order-4 lg:order-2 pt-1.5 border-t border-slate-100 lg:border-t-0 lg:pt-0 flex items-center">
+          <button
+            type="button"
+            id="btnToggleIrodori"
+            onClick={onToggleDatasetMode}
+            aria-pressed={datasetMode === 'irodori'}
+            className={`w-full lg:w-auto min-h-[40px] px-3 sm:px-3.5 py-2 rounded-xl border text-xs sm:text-sm font-semibold inline-flex items-center justify-center gap-2 transition-colors whitespace-nowrap cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-600 ${
+              datasetMode === 'irodori'
+                ? 'bg-slate-900 border-slate-900 text-white hover:bg-slate-800'
+                : 'bg-teal-50 border-teal-200 text-teal-800 hover:bg-teal-100'
+            }`}
+          >
+            {datasetMode === 'irodori' ? (
+              <>
+                <ArrowLeft className="w-4 h-4 shrink-0" aria-hidden="true" />
+                <span>Kembali ke Kanji N4</span>
+              </>
+            ) : (
+              <>
+                <BookOpen className="w-4 h-4 shrink-0" aria-hidden="true" />
+                <span>Buka Kotoba dan Kanji Irodori</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        <div className="text-xs sm:text-sm font-medium text-slate-600 font-mono-num whitespace-nowrap shrink-0 order-2 lg:order-3">
           <strong className="text-emerald-700 font-bold" id="mCount">
             {masteredCount}
           </strong>
@@ -134,7 +171,7 @@ export function AppHeader({
           <span className="hidden xs:inline sm:inline"> hafal</span>
         </div>
 
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 order-3 lg:order-4">
           <button
             type="button"
             id="btnExportData"

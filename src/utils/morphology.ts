@@ -231,12 +231,18 @@ const E_MAP: Record<string, string> = {
   る: 'れ',
 };
 
-const E_OR_I_KANA = 'えけげせてねべめれいきぎしじちひびみり';
+const E_OR_I_KANA = 'えけげせてねべめれでぜいきぎしじちひびみり';
 
 export function getWordMeta(item: Pick<KanjiEntry, 'k' | 'r'>): WordMeta {
   const { k, r } = item;
-  if (NOUN_EXCEPTIONS.has(k)) {
+  if (NOUN_EXCEPTIONS.has(k) || k === '手洗い') {
     return { pos: 'noun', subPos: 'noun' };
+  }
+  if (k.endsWith('する') && k.length > 2) {
+    return { pos: 'noun', subPos: 'suru' };
+  }
+  if (k.endsWith('来る') && k.length > 2) {
+    return { pos: 'godan', subPos: 'verb' };
   }
   if (k.endsWith('い')) {
     return { pos: 'iadj', subPos: 'iadj' };
@@ -265,6 +271,57 @@ export function getWordMeta(item: Pick<KanjiEntry, 'k' | 'r'>): WordMeta {
 export function conjugateWord(item: Pick<KanjiEntry, 'k' | 'r'>, form: ConjugationForm): string {
   const { pos } = getWordMeta(item);
   const k = item.k;
+
+  if (k.endsWith('する') && k.length > 2) {
+    const base = k.slice(0, -2);
+    switch (form) {
+      case 'masu_stem':
+        return base + 'し';
+      case 'masu':
+        return base + 'します';
+      case 'mashita':
+        return base + 'しました';
+      case 'masen':
+        return base + 'しません';
+      case 'mashou':
+        return base + 'しましょう';
+      case 'te':
+        return base + 'して';
+      case 'nai':
+        return base + 'しない';
+      case 'passive_mashita':
+        return base + 'されました';
+      case 'potential_masen':
+        return base + 'できません';
+      case 'potential_masu':
+        return base + 'できます';
+      default:
+        return k;
+    }
+  }
+
+  if (k.endsWith('来る') && k.length > 2) {
+    const base = k.slice(0, -2);
+    switch (form) {
+      case 'masu_stem':
+        return base + '来';
+      case 'masu':
+        return base + '来ます';
+      case 'mashita':
+        return base + '来ました';
+      case 'masen':
+        return base + '来ません';
+      case 'mashou':
+        return base + '来ましょう';
+      case 'te':
+        return base + '来て';
+      case 'nai':
+        return base + '来ない';
+      default:
+        return k;
+    }
+  }
+
   const stem = k.slice(0, -1);
   const last = k.slice(-1);
 
@@ -365,7 +422,9 @@ export function analyzeSentenceBlank(item: KanjiEntry): SentenceBlank {
   const { pos, subPos } = getWordMeta(item);
   const ex = item.ex;
 
-  if (pos === 'ichidan' || pos === 'godan') {
+  if (pos === 'ichidan' || pos === 'godan' || item.k.endsWith('する')) {
+    const blankContext: BlankContextKind =
+      item.k.endsWith('する') ? 'suru_verb' : 'verb_conjugated';
     for (const form of VERB_CONJUGATION_ORDER) {
       const surface = conjugateWord(item, form);
       if (ex.includes(surface)) {
@@ -374,7 +433,7 @@ export function analyzeSentenceBlank(item: KanjiEntry): SentenceBlank {
           targetSurface: surface,
           form,
           subPos,
-          blankContext: 'verb_conjugated',
+          blankContext,
         };
       }
     }

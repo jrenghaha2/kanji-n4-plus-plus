@@ -9,8 +9,12 @@ import {
   TrendingUp,
   XCircle,
 } from 'lucide-react';
+import { IRODORI_BOOKS } from '../data/irodoriBooks';
 import { KANJI, LEVELS } from '../data/kanjiData';
 import type {
+  AppDatasetMode,
+  IrodoriBookConfig,
+  IrodoriChapterFilter,
   LevelFilter,
   QuizOption,
   QuizQuestion,
@@ -27,6 +31,7 @@ import {
   getPoolIndices,
 } from '../utils/quizEngine';
 import {
+  QUIZ_HISTORY_KEY,
   clearQuizHistory,
   computeQuizPerformanceStats,
   loadQuizHistory,
@@ -34,7 +39,10 @@ import {
 } from '../utils/quizStats';
 
 interface QuizPanelProps {
+  datasetMode?: AppDatasetMode;
+  irodoriBook?: IrodoriBookConfig;
   levelFilter: LevelFilter;
+  chapterFilter?: IrodoriChapterFilter;
   modalOpen: boolean;
 }
 
@@ -78,7 +86,25 @@ function formatQuizTimestamp(iso: string): string {
   }).format(date);
 }
 
-export function QuizPanel({ levelFilter, modalOpen }: QuizPanelProps) {
+export function QuizPanel({
+  datasetMode = 'n4',
+  irodoriBook = IRODORI_BOOKS.dasar1,
+  levelFilter,
+  chapterFilter = 'all',
+  modalOpen,
+}: QuizPanelProps) {
+  const activeDataset = datasetMode === 'irodori' ? irodoriBook.data : KANJI;
+  const activeChapterFilter = datasetMode === 'irodori' ? chapterFilter : undefined;
+  const historyStorageKey =
+    datasetMode === 'irodori' ? irodoriBook.quizHistoryKey : QUIZ_HISTORY_KEY;
+
+  const activeScopeLabel =
+    datasetMode === 'irodori'
+      ? chapterFilter === 'all'
+        ? 'Semua Bab (1–18)'
+        : irodoriBook.chapters[chapterFilter].label
+      : `Level ${LEVELS[levelFilter].label}`;
+
   const [stage, setStage] = useState<QuizStage>('setup');
   const [quizTypeChoice, setQuizTypeChoice] = useState<QuizTypeChoice>('random');
   const [customCount, setCustomCount] = useState('');
@@ -90,17 +116,29 @@ export function QuizPanel({ levelFilter, modalOpen }: QuizPanelProps) {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
 
   const [quizHistory, setQuizHistory] = useState<QuizSessionHistoryEntry[]>(() =>
-    loadQuizHistory()
+    loadQuizHistory(undefined, historyStorageKey)
   );
   const [confirmClearHistory, setConfirmClearHistory] = useState(false);
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const customInputRef = useRef<HTMLInputElement>(null);
   const sessionSavedRef = useRef(false);
-  const activeSessionMetaRef = useRef<{ level: LevelFilter; mode: QuizTypeChoice }>({
+  const activeSessionMetaRef = useRef<{
+    level: LevelFilter;
+    scopeLabel: string;
+    mode: QuizTypeChoice;
+    storageKey: string;
+  }>({
     level: levelFilter,
+    scopeLabel: activeScopeLabel,
     mode: quizTypeChoice,
+    storageKey: historyStorageKey,
   });
+
+  useEffect(() => {
+    setQuizHistory(loadQuizHistory(undefined, historyStorageKey));
+    setConfirmClearHistory(false);
+  }, [historyStorageKey]);
 
   useEffect(() => {
     return () => {
@@ -108,13 +146,13 @@ export function QuizPanel({ levelFilter, modalOpen }: QuizPanelProps) {
     };
   }, []);
 
-  // Reset back to setup when level filter changes
+  // Reset back to setup when dataset mode, book, level filter, or chapter filter changes
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
     setStage('setup');
     setLocked(false);
     setSelectedIdx(null);
-  }, [levelFilter]);
+  }, [datasetMode, irodoriBook.id, levelFilter, chapterFilter]);
 
   // Persist completed quiz session once when transitioning to result stage
   useEffect(() => {
@@ -122,14 +160,20 @@ export function QuizPanel({ levelFilter, modalOpen }: QuizPanelProps) {
     const answered = rightList.length + wrongList.length;
     if (answered <= 0) return;
     sessionSavedRef.current = true;
-    const { level, mode } = activeSessionMetaRef.current;
+    const { level, scopeLabel, mode, storageKey } = activeSessionMetaRef.current;
     setQuizHistory(prev =>
-      recordQuizSession(prev, {
-        level,
-        mode,
-        correct: rightList.length,
-        total: answered,
-      })
+      recordQuizSession(
+        prev,
+        {
+          level,
+          scopeLabel,
+          mode,
+          correct: rightList.length,
+          total: answered,
+        },
+        undefined,
+        storageKey
+      )
     );
   }, [stage, rightList.length, wrongList.length]);
 
@@ -138,7 +182,10 @@ export function QuizPanel({ levelFilter, modalOpen }: QuizPanelProps) {
     [quizHistory]
   );
 
-  const kanjiCount = useMemo(() => getPoolIndices(levelFilter, KANJI).length, [levelFilter]);
+  const kanjiCount = useMemo(
+    () => getPoolIndices(levelFilter, activeDataset, activeChapterFilter).length,
+    [levelFilter, activeDataset, activeChapterFilter]
+  );
   const modelCount = getActiveTypeKeys(quizTypeChoice).length;
   const totalBank = kanjiCount * modelCount;
   const disabledPresets = PRESET_COUNTS.filter(c => c > totalBank);
@@ -146,10 +193,22 @@ export function QuizPanel({ levelFilter, modalOpen }: QuizPanelProps) {
   const startQuiz = useCallback(
     (requested: number | 'all') => {
       if (timerRef.current) clearTimeout(timerRef.current);
-      const session = buildQuizSession(levelFilter, quizTypeChoice, requested, KANJI);
+      const session = buildQuizSession(
+        levelFilter,
+        quizTypeChoice,
+        requested,
+        activeDataset,
+        Math.random,
+        activeChapterFilter
+      );
       if (!session.length) return;
       sessionSavedRef.current = false;
-      activeSessionMetaRef.current = { level: levelFilter, mode: quizTypeChoice };
+      activeSessionMetaRef.current = {
+        level: levelFilter,
+        scopeLabel: activeScopeLabel,
+        mode: quizTypeChoice,
+        storageKey: historyStorageKey,
+      };
       setConfirmClearHistory(false);
       setQuestions(session);
       setPos(0);
@@ -159,7 +218,7 @@ export function QuizPanel({ levelFilter, modalOpen }: QuizPanelProps) {
       setSelectedIdx(null);
       setStage('run');
     },
-    [levelFilter, quizTypeChoice]
+    [levelFilter, quizTypeChoice, activeDataset, activeChapterFilter, activeScopeLabel, historyStorageKey]
   );
 
   const handleAnswer = useCallback(
@@ -253,7 +312,7 @@ export function QuizPanel({ levelFilter, modalOpen }: QuizPanelProps) {
                 type="button"
                 id="btnConfirmClearQuizStats"
                 onClick={() => {
-                  setQuizHistory(clearQuizHistory());
+                  setQuizHistory(clearQuizHistory(undefined, historyStorageKey));
                   setConfirmClearHistory(false);
                 }}
                 className="min-h-[32px] px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer"
@@ -399,7 +458,7 @@ export function QuizPanel({ levelFilter, modalOpen }: QuizPanelProps) {
                       ·
                     </span>
                     <span className="text-slate-600 font-medium">
-                      Level {LEVELS[entry.level].label}
+                      {entry.scopeLabel ?? `Level ${LEVELS[entry.level].label}`}
                     </span>
                     <span className="text-slate-300 hidden sm:inline" aria-hidden="true">
                       ·
@@ -447,12 +506,16 @@ export function QuizPanel({ levelFilter, modalOpen }: QuizPanelProps) {
           <div>
             <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
               <HelpCircle className="w-5 h-5 text-indigo-600 shrink-0" aria-hidden="true" />
-              <span>Kuis ABC Multi-Model</span>
+              <span>
+                {datasetMode === 'irodori'
+                  ? `Kuis Kotoba & Kanji ${irodoriBook.label}`
+                  : 'Kuis ABC Multi-Model'}
+              </span>
             </h2>
             <p className="mt-2 text-sm text-slate-600 leading-relaxed">
-              Setiap kanji memiliki hingga 5 variasi soal otomatis. Untuk soal melengkapi kalimat,
-              pilihan jawaban sudah disesuaikan dengan <strong>konjugasi</strong> dan kelas kata
-              dalam level yang dipilih.
+              Setiap {datasetMode === 'irodori' ? 'kosakata' : 'kanji'} memiliki hingga 5 variasi
+              soal otomatis. Untuk soal melengkapi kalimat, pilihan jawaban sudah disesuaikan dengan{' '}
+              <strong>konjugasi</strong> dan kelas kata dalam pilihan yang aktif.
             </p>
           </div>
 
@@ -484,8 +547,8 @@ export function QuizPanel({ levelFilter, modalOpen }: QuizPanelProps) {
           <p className="text-sm text-slate-600">
             Bank soal aktif:{' '}
             <strong className="text-slate-900 font-mono-num">
-              Level {LEVELS[levelFilter].label} ({kanjiCount} kanji × {modelCount} model ={' '}
-              {totalBank.toLocaleString('id-ID')} soal unik)
+              {activeScopeLabel} ({kanjiCount} {datasetMode === 'irodori' ? 'kosakata' : 'kanji'} ×{' '}
+              {modelCount} model = {totalBank.toLocaleString('id-ID')} soal unik)
             </strong>
             .
           </p>
@@ -613,14 +676,18 @@ export function QuizPanel({ levelFilter, modalOpen }: QuizPanelProps) {
 
           <div
             id="quizMain"
-            className={`mt-3 font-jp font-extrabold text-slate-900 ${
+            className={`mt-3 font-jp font-extrabold text-slate-900 break-words ${
               q.type === 'r2k'
-                ? 'text-4xl sm:text-5xl text-indigo-700'
+                ? 'text-3xl sm:text-5xl text-indigo-700'
                 : q.type === 'm2k'
                   ? 'text-2xl sm:text-3xl font-sans'
                   : q.type === 'ex2k'
                     ? 'text-xl sm:text-2xl font-bold leading-relaxed'
-                    : 'text-5xl sm:text-7xl'
+                    : q.item.k.length >= 6
+                      ? 'text-3xl sm:text-5xl'
+                      : q.item.k.length >= 4
+                        ? 'text-4xl sm:text-6xl'
+                        : 'text-5xl sm:text-7xl'
             }`}
           >
             {q.type === 'k2r' || q.type === 'k2m'
