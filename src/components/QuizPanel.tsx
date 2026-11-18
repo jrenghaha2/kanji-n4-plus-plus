@@ -1,11 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, HelpCircle, RotateCcw, XCircle } from 'lucide-react';
+import {
+  BarChart3,
+  CheckCircle2,
+  HelpCircle,
+  RotateCcw,
+  Trash2,
+  TrendingDown,
+  TrendingUp,
+  XCircle,
+} from 'lucide-react';
 import { KANJI, LEVELS } from '../data/kanjiData';
 import type {
   LevelFilter,
   QuizOption,
   QuizQuestion,
   QuizRecord,
+  QuizSessionHistoryEntry,
   QuizTypeChoice,
 } from '../types/kanji';
 import {
@@ -16,6 +26,12 @@ import {
   getActiveTypeKeys,
   getPoolIndices,
 } from '../utils/quizEngine';
+import {
+  clearQuizHistory,
+  computeQuizPerformanceStats,
+  loadQuizHistory,
+  recordQuizSession,
+} from '../utils/quizStats';
 
 interface QuizPanelProps {
   levelFilter: LevelFilter;
@@ -41,6 +57,27 @@ const QUIZ_TYPE_OPTIONS: { key: QuizTypeChoice; short: string; label: string; fu
 
 type QuizStage = 'setup' | 'run' | 'result';
 
+const MODE_SHORT_LABEL: Record<QuizTypeChoice, string> = {
+  random: 'Acak 4',
+  random5: 'Acak 5',
+  k2r: '漢→あ',
+  k2m: '漢→ID',
+  m2k: 'ID→漢',
+  r2k: 'あ→漢',
+  ex2k: '📖→漢',
+};
+
+function formatQuizTimestamp(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('id-ID', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
 export function QuizPanel({ levelFilter, modalOpen }: QuizPanelProps) {
   const [stage, setStage] = useState<QuizStage>('setup');
   const [quizTypeChoice, setQuizTypeChoice] = useState<QuizTypeChoice>('random');
@@ -52,8 +89,18 @@ export function QuizPanel({ levelFilter, modalOpen }: QuizPanelProps) {
   const [locked, setLocked] = useState(false);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
 
+  const [quizHistory, setQuizHistory] = useState<QuizSessionHistoryEntry[]>(() =>
+    loadQuizHistory()
+  );
+  const [confirmClearHistory, setConfirmClearHistory] = useState(false);
+
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const customInputRef = useRef<HTMLInputElement>(null);
+  const sessionSavedRef = useRef(false);
+  const activeSessionMetaRef = useRef<{ level: LevelFilter; mode: QuizTypeChoice }>({
+    level: levelFilter,
+    mode: quizTypeChoice,
+  });
 
   useEffect(() => {
     return () => {
@@ -69,6 +116,28 @@ export function QuizPanel({ levelFilter, modalOpen }: QuizPanelProps) {
     setSelectedIdx(null);
   }, [levelFilter]);
 
+  // Persist completed quiz session once when transitioning to result stage
+  useEffect(() => {
+    if (stage !== 'result' || sessionSavedRef.current) return;
+    const answered = rightList.length + wrongList.length;
+    if (answered <= 0) return;
+    sessionSavedRef.current = true;
+    const { level, mode } = activeSessionMetaRef.current;
+    setQuizHistory(prev =>
+      recordQuizSession(prev, {
+        level,
+        mode,
+        correct: rightList.length,
+        total: answered,
+      })
+    );
+  }, [stage, rightList.length, wrongList.length]);
+
+  const performanceStats = useMemo(
+    () => computeQuizPerformanceStats(quizHistory),
+    [quizHistory]
+  );
+
   const kanjiCount = useMemo(() => getPoolIndices(levelFilter, KANJI).length, [levelFilter]);
   const modelCount = getActiveTypeKeys(quizTypeChoice).length;
   const totalBank = kanjiCount * modelCount;
@@ -79,6 +148,9 @@ export function QuizPanel({ levelFilter, modalOpen }: QuizPanelProps) {
       if (timerRef.current) clearTimeout(timerRef.current);
       const session = buildQuizSession(levelFilter, quizTypeChoice, requested, KANJI);
       if (!session.length) return;
+      sessionSavedRef.current = false;
+      activeSessionMetaRef.current = { level: levelFilter, mode: quizTypeChoice };
+      setConfirmClearHistory(false);
       setQuestions(session);
       setPos(0);
       setWrongList([]);
@@ -161,9 +233,216 @@ export function QuizPanel({ levelFilter, modalOpen }: QuizPanelProps) {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [stage, modalOpen, locked, questions, pos, handleAnswer]);
 
+  const recentScores = quizHistory.slice(0, 6);
+
+  const performancePanel = (
+    <div
+      id="quizStatsPanel"
+      className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 space-y-4"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+          <BarChart3 className="w-4 h-4 text-indigo-600 shrink-0" aria-hidden="true" />
+          <span>Statistik Performa Kuis</span>
+        </h3>
+
+        {quizHistory.length > 0 ? (
+          confirmClearHistory ? (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                id="btnConfirmClearQuizStats"
+                onClick={() => {
+                  setQuizHistory(clearQuizHistory());
+                  setConfirmClearHistory(false);
+                }}
+                className="min-h-[32px] px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer"
+              >
+                Ya, Hapus
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmClearHistory(false)}
+                className="min-h-[32px] px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-xs font-semibold cursor-pointer"
+              >
+                Batal
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              id="btnClearQuizStats"
+              onClick={() => setConfirmClearHistory(true)}
+              className="min-h-[32px] px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-slate-500 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+              <span>Hapus Riwayat</span>
+            </button>
+          )
+        ) : null}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 space-y-2">
+          <div className="text-xs font-semibold text-slate-500">Persentase Jawaban Benar</div>
+          <div className="flex items-baseline justify-between gap-2">
+            <span
+              id="quizStatAccuracy"
+              className="text-2xl font-extrabold text-emerald-700 font-mono-num"
+            >
+              {performanceStats.overallAccuracyPct}%
+            </span>
+            <span className="text-xs font-medium text-slate-600 font-mono-num">
+              {performanceStats.totalCorrect}/{performanceStats.totalAnswered} benar
+            </span>
+          </div>
+          <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden" aria-hidden="true">
+            <div
+              className="h-full bg-emerald-600 rounded-full transition-all duration-300"
+              style={{ width: `${performanceStats.overallAccuracyPct}%` }}
+            />
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 space-y-1.5">
+          <div className="text-xs font-semibold text-slate-500">Skor Terakhir</div>
+          <div className="flex items-baseline justify-between gap-2">
+            <span
+              id="quizStatLatest"
+              className="text-2xl font-extrabold text-indigo-700 font-mono-num"
+            >
+              {performanceStats.latestScore !== null ? `${performanceStats.latestScore}%` : '—'}
+            </span>
+            {performanceStats.trendDelta !== null ? (
+              <span
+                className={`text-xs font-bold font-mono-num inline-flex items-center gap-0.5 ${
+                  performanceStats.trendDelta > 0
+                    ? 'text-emerald-700'
+                    : performanceStats.trendDelta < 0
+                      ? 'text-rose-700'
+                      : 'text-slate-500'
+                }`}
+              >
+                {performanceStats.trendDelta > 0 ? (
+                  <TrendingUp className="w-3.5 h-3.5" aria-hidden="true" />
+                ) : performanceStats.trendDelta < 0 ? (
+                  <TrendingDown className="w-3.5 h-3.5" aria-hidden="true" />
+                ) : null}
+                <span>
+                  {performanceStats.trendDelta > 0
+                    ? `+${performanceStats.trendDelta}%`
+                    : `${performanceStats.trendDelta}%`}
+                </span>
+              </span>
+            ) : (
+              <span className="text-xs text-slate-500">
+                {performanceStats.totalSessions === 1 ? 'Sesi pertama' : 'Belum ada sesi'}
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-slate-500">
+            {performanceStats.trendDelta !== null
+              ? 'Dibanding skor kuis sebelumnya'
+              : 'Selesaikan kuis untuk melihat tren'}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 space-y-1.5">
+          <div className="text-xs font-semibold text-slate-500">Skor Terbaik</div>
+          <div className="flex items-baseline justify-between gap-2">
+            <span
+              id="quizStatBest"
+              className="text-2xl font-extrabold text-slate-900 font-mono-num"
+            >
+              {performanceStats.totalSessions > 0 ? `${performanceStats.bestScore}%` : '—'}
+            </span>
+            <span className="text-xs font-medium text-slate-600 font-mono-num">
+              {performanceStats.totalSessions} sesi
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-500">
+            Rekor akurasi tertinggi yang tersimpan
+          </p>
+        </div>
+      </div>
+
+      {recentScores.length > 0 ? (
+        <div className="space-y-2 pt-1">
+          <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Riwayat Skor Terakhir
+          </div>
+          <ul id="quizRecentHistory" className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+            {recentScores.map(entry => {
+              const barColor =
+                entry.score >= 80
+                  ? 'bg-emerald-600'
+                  : entry.score >= 60
+                    ? 'bg-indigo-600'
+                    : 'bg-amber-500';
+              const textColor =
+                entry.score >= 80
+                  ? 'text-emerald-700'
+                  : entry.score >= 60
+                    ? 'text-indigo-700'
+                    : 'text-amber-700';
+
+              return (
+                <li
+                  key={entry.id}
+                  className="px-3.5 py-2.5 bg-white flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 text-xs sm:text-sm"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-jp font-bold text-slate-900 shrink-0">
+                      {MODE_SHORT_LABEL[entry.mode]}
+                    </span>
+                    <span className="text-slate-300" aria-hidden="true">
+                      ·
+                    </span>
+                    <span className="text-slate-600 font-medium">
+                      Level {LEVELS[entry.level].label}
+                    </span>
+                    <span className="text-slate-300 hidden sm:inline" aria-hidden="true">
+                      ·
+                    </span>
+                    <span className="text-xs text-slate-500 hidden sm:inline">
+                      {formatQuizTimestamp(entry.completedAt)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-3 ml-auto shrink-0">
+                    <span className="text-xs text-slate-600 font-mono-num">
+                      {entry.correct}/{entry.total}
+                    </span>
+                    <div
+                      className="w-20 h-1.5 rounded-full bg-slate-100 overflow-hidden"
+                      aria-hidden="true"
+                    >
+                      <div
+                        className={`h-full rounded-full ${barColor}`}
+                        style={{ width: `${entry.score}%` }}
+                      />
+                    </div>
+                    <span className={`font-bold font-mono-num w-10 text-right ${textColor}`}>
+                      {entry.score}%
+                    </span>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : (
+        <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">
+          Belum ada riwayat skor. Selesaikan satu sesi kuis untuk memantau persentase jawaban benar
+          dan riwayat skor Anda.
+        </p>
+      )}
+    </div>
+  );
+
   if (stage === 'setup') {
     return (
-      <section aria-label="Pengaturan Kuis ABC" className="max-w-3xl">
+      <section aria-label="Pengaturan Kuis ABC" className="max-w-3xl space-y-6">
         <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-7 space-y-5">
           <div>
             <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
@@ -281,6 +560,8 @@ export function QuizPanel({ levelFilter, modalOpen }: QuizPanelProps) {
             ) : null}
           </div>
         </div>
+
+        {performancePanel}
       </section>
     );
   }
@@ -530,6 +811,8 @@ export function QuizPanel({ levelFilter, modalOpen }: QuizPanelProps) {
         <RotateCcw className="w-4 h-4" aria-hidden="true" />
         <span>Kuis Baru (Acak Ulang)</span>
       </button>
+
+      {performancePanel}
     </section>
   );
 }

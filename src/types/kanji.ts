@@ -96,3 +96,13 @@ export interface ToastMessage {
   title: string;
   detail?: string;
 }
+
+export interface QuizSessionHistoryEntry {
+  id: string;
+  completedAt: string;
+  level: LevelFilter;
+  mode: QuizTypeChoice;
+  correct: number;
+  total: number;
+  score: number;
+}
