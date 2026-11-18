@@ -14,6 +14,8 @@ import {
   buildUserProgressWriteData,
   isValidAvatarUrl,
   isValidFirebaseUid,
+  markKanjiHard,
+  markKanjiMastered,
   mergeProgressSets,
   sanitizeDisplayName,
   sanitizeProgressLists,
@@ -354,4 +356,15 @@ test('progressSync enforces blueprint bounds, sanitization, profile checks, and 
   assert.deepEqual([...merged.mastered].sort(), ['n1', 'n2', 'n3', 'n4']);
   assert.deepEqual([...merged.hard], ['n5']);
   assert.equal(merged.addedFromSecondary, 3);
+
+  // Mutual exclusivity between Hafal (mastered) and Sulit (hard)
+  const afterHard = markKanjiHard(new Set(['n1', 'n2']), new Set(['n3']), 'n1');
+  assert.equal(afterHard.nextMastered.has('n1'), false);
+  assert.equal(afterHard.nextHard.has('n1'), true);
+  assert.equal(afterHard.nextMastered.has('n2'), true);
+
+  const afterMastered = markKanjiMastered(afterHard.nextMastered, afterHard.nextHard, 'n1');
+  assert.equal(afterMastered.nextMastered.has('n1'), true);
+  assert.equal(afterMastered.nextHard.has('n1'), false);
+  assert.equal(afterMastered.isNewMastered, true);
 });

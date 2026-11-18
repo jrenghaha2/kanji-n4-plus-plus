@@ -37,6 +37,8 @@ import {
   areSetsEqual,
   buildUserProfileWriteData,
   buildUserProgressWriteData,
+  markKanjiHard,
+  markKanjiMastered,
   mergeProgressSets,
   sanitizeAvatarUrl,
   sanitizeDisplayName,
@@ -145,7 +147,12 @@ export default function App() {
   const [levelFilter, setLevelFilter] = useState<LevelFilter>('all');
 
   const [mastered, setMastered] = useState<Set<string>>(() => safeLoadSet(LS_KEY));
-  const [hardSet, setHardSet] = useState<Set<string>>(() => safeLoadSet(HARD_KEY));
+  const [hardSet, setHardSet] = useState<Set<string>>(() => {
+    const m = safeLoadSet(LS_KEY);
+    const h = safeLoadSet(HARD_KEY);
+    m.forEach(id => h.delete(id));
+    return h;
+  });
 
   const [user, setUser] = useState<User | null>(null);
   const [authVersion, setAuthVersion] = useState(0);
@@ -847,14 +854,14 @@ export default function App() {
     const idx = order[pos];
     if (idx === undefined) return;
     const item = KANJI[idx];
-    const nextM = new Set(mastered);
-    const nextH = new Set(hardSet);
-    const isNew = !nextM.has(item.id);
-    nextM.add(item.id);
-    nextH.delete(item.id);
+    const { nextMastered, nextHard, isNewMastered } = markKanjiMastered(
+      mastered,
+      hardSet,
+      item.id
+    );
 
-    if (!applyProgressChange(nextM, nextH)) return;
-    if (isNew) setSessionNewMaster(v => v + 1);
+    if (!applyProgressChange(nextMastered, nextHard)) return;
+    if (isNewMastered) setSessionNewMaster(v => v + 1);
     setPos(p => p + 1);
     setFlipped(false);
   }, [order, pos, mastered, hardSet, applyProgressChange]);
@@ -863,11 +870,9 @@ export default function App() {
     const idx = order[pos];
     if (idx === undefined) return;
     const item = KANJI[idx];
-    const nextM = new Set(mastered);
-    const nextH = new Set(hardSet);
-    nextH.add(item.id);
+    const { nextMastered, nextHard } = markKanjiHard(mastered, hardSet, item.id);
 
-    if (!applyProgressChange(nextM, nextH)) return;
+    if (!applyProgressChange(nextMastered, nextHard)) return;
     setSessionHard(prev => {
       const next = new Set(prev);
       next.add(idx);

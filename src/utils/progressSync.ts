@@ -178,3 +178,28 @@ export function areSetsEqual(a: Set<string>, b: Set<string>): boolean {
   }
   return true;
 }
+
+export function markKanjiMastered(
+  mastered: Set<string>,
+  hard: Set<string>,
+  id: string
+): { nextMastered: Set<string>; nextHard: Set<string>; isNewMastered: boolean } {
+  const nextMastered = new Set(mastered);
+  const nextHard = new Set(hard);
+  const isNewMastered = !nextMastered.has(id);
+  nextMastered.add(id);
+  nextHard.delete(id);
+  return { nextMastered, nextHard, isNewMastered };
+}
+
+export function markKanjiHard(
+  mastered: Set<string>,
+  hard: Set<string>,
+  id: string
+): { nextMastered: Set<string>; nextHard: Set<string> } {
+  const nextMastered = new Set(mastered);
+  const nextHard = new Set(hard);
+  nextHard.add(id);
+  nextMastered.delete(id);
+  return { nextMastered, nextHard };
+}
