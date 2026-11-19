@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ArrowRight,
   BarChart3,
   CheckCircle2,
   HelpCircle,
@@ -36,6 +37,7 @@ import {
   formatChapterSelectionLabel,
   getActiveTypeKeys,
   getPoolIndices,
+  splitFuriganaParts,
 } from '../utils/quizEngine';
 import {
   QUIZ_HISTORY_KEY,
@@ -90,6 +92,41 @@ function getQuizModelLabel(typeKey: keyof typeof QTYPES, datasetMode: AppDataset
     if (typeKey === 'ex2k') return 'Kalimat → Kosakata';
   }
   return QTYPES[typeKey].label;
+}
+
+const QUIZ_FURIGANA_STORAGE_KEY = 'n4kanji_quiz_furigana_v1';
+
+function loadFuriganaPreference(): boolean {
+  try {
+    return typeof window !== 'undefined' && window.localStorage.getItem(QUIZ_FURIGANA_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function saveFuriganaPreference(enabled: boolean): void {
+  try {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(QUIZ_FURIGANA_STORAGE_KEY, enabled ? '1' : '0');
+    }
+  } catch {
+    // Non-fatal if storage is blocked
+  }
+}
+
+function renderRubyText(surface: string, reading: string, rtClassName: string) {
+  const parts = splitFuriganaParts(surface, reading);
+  if (!parts) return surface;
+  return (
+    <>
+      {parts.prefix}
+      <ruby>
+        {parts.base}
+        <rt className={rtClassName}>{parts.ruby}</rt>
+      </ruby>
+      {parts.suffix}
+    </>
+  );
 }
 
 function formatQuizTimestamp(iso: string): string {
@@ -151,6 +188,8 @@ export function QuizPanel({
   const [rightList, setRightList] = useState<QuizRecord[]>([]);
   const [locked, setLocked] = useState(false);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const [wrongFeedback, setWrongFeedback] = useState<QuizRecord | null>(null);
+  const [showFurigana, setShowFurigana] = useState<boolean>(() => loadFuriganaPreference());
 
   const [quizHistory, setQuizHistory] = useState<QuizSessionHistoryEntry[]>(() =>
     loadQuizHistory(undefined, historyStorageKey)
@@ -203,10 +242,19 @@ export function QuizPanel({
     setStage('setup');
     setLocked(false);
     setSelectedIdx(null);
+    setWrongFeedback(null);
     setSelectedChapters(
       chapterFilter === 'all' ? [...IRODORI_CHAPTER_NUMBERS] : [chapterFilter]
     );
   }, [datasetMode, irodoriBook.id, levelFilter, chapterFilter]);
+
+  const toggleFurigana = useCallback(() => {
+    setShowFurigana(prev => {
+      const next = !prev;
+      saveFuriganaPreference(next);
+      return next;
+    });
+  }, []);
 
   const toggleChapterSelection = useCallback((ch: IrodoriChapterNumber) => {
     setSelectedChapters(prev => {
@@ -285,10 +333,23 @@ export function QuizPanel({
       setRightList([]);
       setLocked(false);
       setSelectedIdx(null);
+      setWrongFeedback(null);
       setStage('run');
     },
     [levelFilter, quizTypeChoice, activeDataset, activeChapterFilter, activeScopeLabel, historyStorageKey]
   );
+
+  const advanceToNextQuestion = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setLocked(false);
+    setSelectedIdx(null);
+    setWrongFeedback(null);
+    if (pos + 1 < questions.length) {
+      setPos(p => p + 1);
+    } else {
+      setStage('result');
+    }
+  }, [pos, questions.length]);
 
   const handleAnswer = useCallback(
     (optObj: QuizOption, optIdx: number) => {
@@ -311,12 +372,8 @@ export function QuizPanel({
 
       if (isCorrect) {
         setRightList(prev => [...prev, rec]);
-      } else {
-        setWrongList(prev => [...prev, rec]);
-      }
-
-      timerRef.current = setTimeout(
-        () => {
+        setWrongFeedback(null);
+        timerRef.current = setTimeout(() => {
           setLocked(false);
           setSelectedIdx(null);
           if (pos + 1 < questions.length) {
@@ -324,14 +381,16 @@ export function QuizPanel({
           } else {
             setStage('result');
           }
-        },
-        isCorrect ? 420 : 850
-      );
+        }, 420);
+      } else {
+        setWrongList(prev => [...prev, rec]);
+        setWrongFeedback(rec);
+      }
     },
     [locked, pos, questions]
   );
 
-  // Keyboard shortcuts A-D or 1-4 while quiz is running
+  // Keyboard shortcuts A-D or 1-4 while quiz is running, plus Enter/Space to continue after wrong feedback
   useEffect(() => {
     if (stage !== 'run' || modalOpen) return;
 
@@ -339,6 +398,12 @@ export function QuizPanel({
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      if (wrongFeedback && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault();
+        advanceToNextQuestion();
+        return;
+      }
 
       let optIdx = -1;
       if (/^[1-4]$/.test(e.key)) {
@@ -359,7 +424,7 @@ export function QuizPanel({
 
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [stage, modalOpen, locked, questions, pos, handleAnswer]);
+  }, [stage, modalOpen, locked, wrongFeedback, questions, pos, handleAnswer, advanceToNextQuestion]);
 
   const recentScores = quizHistory.slice(0, 6);
   const activeHistorySession = useMemo(
@@ -990,6 +1055,32 @@ export function QuizPanel({
             })}
           </div>
 
+          <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm font-bold text-slate-900">
+                Bantuan Furigana <span className="font-jp font-semibold text-indigo-700">(ふりがな)</span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Opsional — tampilkan cara baca hiragana di atas kanji pada soal{' '}
+                <strong>{datasetMode === 'irodori' ? 'Arti ↔ Kosakata' : 'Arti ↔ Kanji'}</strong>{' '}
+                (漢→ID &amp; ID→漢).
+              </p>
+            </div>
+            <button
+              type="button"
+              id="btnToggleQuizFurigana"
+              aria-pressed={showFurigana}
+              onClick={toggleFurigana}
+              className={`min-h-[36px] px-3.5 py-1.5 rounded-xl border text-xs font-bold transition-colors cursor-pointer shrink-0 focus-visible:outline-2 focus-visible:outline-indigo-600 ${
+                showFurigana
+                  ? 'bg-indigo-600 border-indigo-600 text-white'
+                  : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
+              }`}
+            >
+              {showFurigana ? 'Furigana: Aktif' : 'Furigana: Mati'}
+            </button>
+          </div>
+
           <p className="text-sm text-slate-600">
             Bank soal aktif:{' '}
             <strong className="text-slate-900 font-mono-num">
@@ -1091,6 +1182,10 @@ export function QuizPanel({
     const qInfo = QTYPES[q.type];
     const progressPct = (pos / questions.length) * 100;
     const isMeaningList = q.type === 'k2m';
+    const supportsFurigana = q.type === 'k2m' || q.type === 'm2k';
+    const showPromptFurigana = showFurigana && q.type === 'k2m';
+    const showOptionFurigana = showFurigana && q.type === 'm2k';
+    const isLastQuestion = pos + 1 >= questions.length;
 
     return (
       <section aria-label="Sesi Kuis Berlangsung" className="max-w-3xl space-y-4">
@@ -1098,15 +1193,31 @@ export function QuizPanel({
           <span className="text-sm font-semibold text-slate-600 font-mono-num" id="quizCounter">
             Soal {pos + 1} dari {questions.length}
           </span>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <span className="text-xs font-semibold text-indigo-700" id="quizModeBadge">
               {qInfo.short} · {getQuizModelLabel(q.type, datasetMode)}
             </span>
+            {supportsFurigana ? (
+              <button
+                type="button"
+                id="btnQuizRunningFurigana"
+                aria-pressed={showFurigana}
+                onClick={toggleFurigana}
+                className={`min-h-[34px] px-2.5 py-1 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
+                  showFurigana
+                    ? 'bg-indigo-50 border-indigo-300 text-indigo-700 hover:bg-indigo-100'
+                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                Furigana: {showFurigana ? 'Aktif' : 'Mati'}
+              </button>
+            ) : null}
             <button
               type="button"
               id="btnQuizFinishEarly"
               onClick={() => {
                 if (timerRef.current) clearTimeout(timerRef.current);
+                setWrongFeedback(null);
                 if (rightList.length + wrongList.length === 0) {
                   setStage('setup');
                 } else {
@@ -1138,7 +1249,7 @@ export function QuizPanel({
 
           <div
             id="quizMain"
-            className={`mt-3 font-jp font-extrabold text-slate-900 break-words ${
+            className={`mt-3 font-jp font-extrabold text-slate-900 break-words leading-snug ${
               q.type === 'r2k'
                 ? 'text-3xl sm:text-5xl text-indigo-700'
                 : q.type === 'm2k'
@@ -1152,13 +1263,19 @@ export function QuizPanel({
                         : 'text-5xl sm:text-7xl'
             }`}
           >
-            {q.type === 'k2r' || q.type === 'k2m'
-              ? q.item.k
-              : q.type === 'm2k'
-                ? q.item.m
-                : q.type === 'r2k'
-                  ? q.item.r
-                  : q.exMeta?.maskedEx}
+            {q.type === 'k2m' && showPromptFurigana
+              ? renderRubyText(
+                  q.item.k,
+                  q.item.r,
+                  'text-xs sm:text-sm font-semibold text-indigo-600 select-none'
+                )
+              : q.type === 'k2r' || q.type === 'k2m'
+                ? q.item.k
+                : q.type === 'm2k'
+                  ? q.item.m
+                  : q.type === 'r2k'
+                    ? q.item.r
+                    : q.exMeta?.maskedEx}
           </div>
 
           {q.promptHint ? (
@@ -1213,16 +1330,104 @@ export function QuizPanel({
                 >
                   {ABC_LABELS[idx]}
                 </span>
-                <span className="font-jp text-base sm:text-lg font-bold break-words">
-                  {optObj.label}
+                <span className="font-jp text-base sm:text-lg font-bold break-words leading-snug">
+                  {showOptionFurigana
+                    ? renderRubyText(
+                        optObj.label,
+                        optObj.item.r,
+                        'text-[11px] font-medium text-indigo-600 select-none'
+                      )
+                    : optObj.label}
                 </span>
               </button>
             );
           })}
         </div>
 
+        {wrongFeedback ? (
+          <div
+            id="quizWrongFeedback"
+            role="status"
+            aria-live="polite"
+            className="rounded-2xl border-2 border-rose-200 bg-rose-50/80 p-4 sm:p-5 space-y-3"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-sm sm:text-base font-bold text-rose-800">
+                <XCircle className="w-5 h-5 text-rose-600 shrink-0" aria-hidden="true" />
+                <span>Kurang tepat — cek pembahasannya:</span>
+              </div>
+              <button
+                type="button"
+                id="btnQuizNextAfterWrong"
+                onClick={advanceToNextQuestion}
+                className="min-h-[38px] px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-600"
+              >
+                <span>{isLastQuestion ? 'Lihat Hasil Kuis' : 'Soal Berikutnya'}</span>
+                <ArrowRight className="w-4 h-4 shrink-0" aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-sm">
+              <div className="rounded-xl border border-emerald-200 bg-white p-3 space-y-1">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">
+                  Jawaban Benar
+                </div>
+                <div className="text-slate-900">
+                  <strong className="font-jp text-base">
+                    {wrongFeedback.type === 'ex2k'
+                      ? (wrongFeedback.exMeta?.targetSurface ?? wrongFeedback.item.k)
+                      : wrongFeedback.item.k}
+                  </strong>
+                  {wrongFeedback.item.r && wrongFeedback.item.r !== wrongFeedback.item.k ? (
+                    <span className="font-jp text-slate-600"> ({wrongFeedback.item.r})</span>
+                  ) : null}
+                </div>
+                <div className="text-emerald-800 font-semibold">{wrongFeedback.item.m}</div>
+              </div>
+
+              <div className="rounded-xl border border-rose-200 bg-white p-3 space-y-1">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-rose-700">
+                  Pilihanmu
+                </div>
+                <div className="text-slate-900">
+                  <strong className="font-jp text-base text-rose-800">
+                    {wrongFeedback.chosenLabel}
+                  </strong>
+                  {wrongFeedback.type === 'k2m' ? (
+                    <span className="font-jp text-slate-600">
+                      {' '}
+                      ← {wrongFeedback.chosen.k}
+                      {wrongFeedback.chosen.r && wrongFeedback.chosen.r !== wrongFeedback.chosen.k
+                        ? ` (${wrongFeedback.chosen.r})`
+                        : ''}
+                    </span>
+                  ) : wrongFeedback.chosen.r && wrongFeedback.chosen.r !== wrongFeedback.chosenLabel ? (
+                    <span className="font-jp text-slate-600"> ({wrongFeedback.chosen.r})</span>
+                  ) : null}
+                </div>
+                {wrongFeedback.type !== 'k2m' ? (
+                  <div className="text-slate-600 text-xs sm:text-sm">
+                    Artinya: <span className="font-medium text-slate-800">{wrongFeedback.chosen.m}</span>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            {wrongFeedback.type === 'ex2k' && wrongFeedback.item.ex ? (
+              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm text-slate-700">
+                <p className="font-jp font-semibold text-slate-900">{wrongFeedback.item.ex}</p>
+                {wrongFeedback.item.exi ? (
+                  <p className="text-slate-600 mt-0.5">{wrongFeedback.item.exi}</p>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         <p className="hidden md:block text-center text-xs text-slate-500">
-          Tekan tombol A–D atau 1–4 pada keyboard untuk memilih jawaban.
+          {wrongFeedback
+            ? 'Tekan Enter atau Spasi untuk lanjut ke soal berikutnya.'
+            : 'Tekan tombol A–D atau 1–4 pada keyboard untuk memilih jawaban.'}
         </p>
       </section>
     );

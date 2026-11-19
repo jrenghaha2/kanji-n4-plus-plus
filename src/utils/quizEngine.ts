@@ -150,6 +150,57 @@ export const HAS_KANJI_RE = /[一-龯々ヶヵ]/;
 const SENTENCE_PUNCT_RE = /[、。？！?!]/;
 const KATAKANA_RE = /[ァ-ヴー]/;
 
+export interface FuriganaParts {
+  prefix: string;
+  base: string;
+  ruby: string;
+  suffix: string;
+}
+
+/**
+ * Splits a Japanese surface term and its hiragana reading into shared leading/trailing
+ * kana (`prefix`/`suffix`) plus the kanji-containing core (`base`) and its aligned reading (`ruby`).
+ * Returns `null` when the surface has no Kanji or matches its reading verbatim.
+ */
+export function splitFuriganaParts(surface: string, reading: string): FuriganaParts | null {
+  const s = surface.trim();
+  const r = reading.trim();
+  if (!s || !r || s === r || !HAS_KANJI_RE.test(s)) return null;
+
+  let prefixLen = 0;
+  while (
+    prefixLen < s.length &&
+    prefixLen < r.length &&
+    s[prefixLen] === r[prefixLen] &&
+    !HAS_KANJI_RE.test(s[prefixLen])
+  ) {
+    prefixLen++;
+  }
+
+  let suffixLen = 0;
+  while (
+    suffixLen < s.length - prefixLen &&
+    suffixLen < r.length - prefixLen &&
+    s[s.length - 1 - suffixLen] === r[r.length - 1 - suffixLen] &&
+    !HAS_KANJI_RE.test(s[s.length - 1 - suffixLen])
+  ) {
+    suffixLen++;
+  }
+
+  const base = s.slice(prefixLen, s.length - suffixLen);
+  const ruby = r.slice(prefixLen, r.length - suffixLen);
+  if (!base || !ruby || !HAS_KANJI_RE.test(base)) {
+    return { prefix: '', base: s, ruby: r, suffix: '' };
+  }
+
+  return {
+    prefix: s.slice(0, prefixLen),
+    base,
+    ruby,
+    suffix: suffixLen > 0 ? s.slice(s.length - suffixLen) : '',
+  };
+}
+
 /**
  * Determines whether a vocabulary entry is appropriate for a specific quiz model.
  * - `k2r` (Kanji → Hiragana) and `r2k` (Hiragana → Kanji) require at least one Kanji,

@@ -10,6 +10,7 @@ import {
   hasMeaningCollision,
   makeQuestion,
   normalizeTermText,
+  splitFuriganaParts,
 } from './quizEngine';
 
 function createDeterministicRng(seed = 42): () => number {
@@ -132,4 +133,39 @@ test('N4 quiz questions never present synonymous meanings, homophones, or homogr
   }
 
   assert.deepEqual(violations, []);
+});
+
+test('splitFuriganaParts aligns kanji core cleanly and skips non-kanji terms', () => {
+  assert.deepEqual(splitFuriganaParts('計画', 'けいかく'), {
+    prefix: '',
+    base: '計画',
+    ruby: 'けいかく',
+    suffix: '',
+  });
+  assert.deepEqual(splitFuriganaParts('食べる', 'たべる'), {
+    prefix: '',
+    base: '食',
+    ruby: 'た',
+    suffix: 'べる',
+  });
+  assert.deepEqual(splitFuriganaParts('新しい', 'あたらしい'), {
+    prefix: '',
+    base: '新',
+    ruby: 'あたら',
+    suffix: 'しい',
+  });
+  assert.deepEqual(splitFuriganaParts('お持ちください', 'おもちください'), {
+    prefix: 'お',
+    base: '持',
+    ruby: 'も',
+    suffix: 'ちください',
+  });
+  assert.deepEqual(splitFuriganaParts('～時間', '～じかん'), {
+    prefix: '～',
+    base: '時間',
+    ruby: 'じかん',
+    suffix: '',
+  });
+  assert.equal(splitFuriganaParts('だいたい', 'だいたい'), null);
+  assert.equal(splitFuriganaParts('エアコン', 'えあこん'), null);
 });
