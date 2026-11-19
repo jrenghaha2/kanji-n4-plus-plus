@@ -198,12 +198,85 @@ test('IRODORI_BOOKS prepares Pemula, Dasar 1, and Dasar 2 with unique keys, Bab 
   assert.equal(idPrefixes.size, 3);
 
   assert.equal(isIrodoriBookPopulated('dasar1'), true);
-  assert.equal(isIrodoriBookPopulated('pemula'), false);
+  assert.equal(isIrodoriBookPopulated('pemula'), true);
   assert.equal(isIrodoriBookPopulated('dasar2'), false);
   assert.deepEqual(
     getAvailableIrodoriBooks().map(b => b.id),
-    ['dasar1']
+    ['pemula', 'dasar1']
   );
+
+  // Verify Irodori Pemula full Bab 1-18 dataset, PDF link, sentence blanks, and 5-model quiz options
+  const pemula = IRODORI_BOOKS.pemula;
+  assert.ok(pemula.data.length >= 700, `Expected full Pemula dataset, got ${pemula.data.length}`);
+  assert.equal(pemula.validIds.size, pemula.data.length);
+  assert.equal(
+    pemula.pdfPath,
+    'https://drive.google.com/file/d/1Pqbslo4_fbmWlyy7aRdmXZs40DS98p0O/view?pli=1'
+  );
+  assert.equal(pemula.data[0].k, 'おはよう(ございます)');
+  assert.equal(pemula.data[0].romaji, 'ohayoo (gozaimasu)');
+  assert.deepEqual(pemula.data[0].kanjiList, []);
+
+  const shitsurei = pemula.data.find(it => it.k === '失礼します');
+  assert.ok(shitsurei, 'Expected 失礼します in Bab 1');
+  assert.deepEqual(shitsurei.kanjiList, ['失', '礼']);
+
+  for (const chapter of IRODORI_CHAPTER_NUMBERS) {
+    const chItems = pemula.data.filter(it => it.chapter === chapter);
+    assert.ok(chItems.length >= 4, `Pemula Bab ${chapter} should have at least 4 entries`);
+    assert.ok(!pemula.chapters[chapter].jpTitle.includes('未入力'), `Pemula Bab ${chapter} title should be populated`);
+  }
+
+  const blankFailures: string[] = [];
+  for (const item of pemula.data) {
+    const blank = analyzeSentenceBlank(item);
+    if (!blank.maskedEx.includes('（　　）')) {
+      blankFailures.push(`${item.id} (Bab ${item.chapter} ${item.k}): missing blank in "${blank.maskedEx}"`);
+    }
+    if (!item.ex.includes(blank.targetSurface)) {
+      blankFailures.push(`${item.id} (Bab ${item.chapter} ${item.k}): targetSurface "${blank.targetSurface}" not in "${item.ex}"`);
+    }
+  }
+  assert.deepEqual(blankFailures, []);
+
+  const rng = createDeterministicRng(777);
+  const quizFailures: string[] = [];
+  let pemulaChecked = 0;
+
+  for (const chapter of IRODORI_CHAPTER_NUMBERS as readonly IrodoriChapterNumber[]) {
+    const bank = buildQuizBank('all', 'random5', pemula.data, chapter);
+    assert.ok(bank.length > 0, `Pemula Bab ${chapter} quiz bank should not be empty`);
+
+    for (const entry of bank) {
+      const item = pemula.data[entry.kanjiIdx];
+      const q = makeQuestion(item, entry.typeKey, 'all', pemula.data, rng, chapter);
+      pemulaChecked += 1;
+
+      const labels = q.options.map(o => o.label);
+      const ids = q.options.map(o => o.item.id);
+      if (q.options.length !== 4) {
+        quizFailures.push(`Bab ${chapter} ${item.id} (${entry.typeKey}): expected 4 options, got ${q.options.length}`);
+      }
+      if (new Set(labels).size !== 4) {
+        quizFailures.push(`Bab ${chapter} ${item.id} (${item.k}, ${entry.typeKey}): duplicate labels ${JSON.stringify(labels)}`);
+      }
+      if (new Set(ids).size !== 4) {
+        quizFailures.push(`Bab ${chapter} ${item.id} (${entry.typeKey}): duplicate ids`);
+      }
+      if (!ids.includes(item.id)) {
+        quizFailures.push(`Bab ${chapter} ${item.id} (${entry.typeKey}): missing correct answer`);
+      }
+      if (entry.typeKey === 'ex2k') {
+        const correctOpt = q.options.find(o => o.item.id === item.id);
+        if (!q.exMeta || !q.exMeta.maskedEx.includes('（　　）') || correctOpt?.label !== q.exMeta.targetSurface) {
+          quizFailures.push(`Bab ${chapter} ${item.id} (ex2k): blank/label mismatch`);
+        }
+      }
+    }
+  }
+
+  assert.deepEqual(quizFailures, []);
+  assert.equal(pemulaChecked, pemula.data.length * 5);
 
   // Verify tuple builder for future books
   const sample = buildIrodoriEntries(
@@ -211,15 +284,14 @@ test('IRODORI_BOOKS prepares Pemula, Dasar 1, and Dasar 2 with unique keys, Bab 
       [1, '日本', 'にほん', 'にほ↓ん', 'Jepang', '1. はじめまして', '日本へ来ました。', 'Saya datang ke Jepang.'],
       [14, '経験', 'けいけん', 'けいけん○', 'pengalaman', '1. アルバイト', '仕事をした経験があります。', 'Ada pengalaman kerja.'],
     ],
-    'irp'
+    'ir2_'
   );
   assert.equal(sample.length, 2);
-  assert.equal(sample[0].id, 'irp1');
+  assert.equal(sample[0].id, 'ir2_1');
   assert.equal(sample[0].dif, 'easy');
   assert.equal(sample[0].chapter, 1);
-  assert.equal(sample[1].id, 'irp2');
+  assert.equal(sample[1].id, 'ir2_2');
   assert.equal(sample[1].dif, 'hard');
   assert.equal(sample[1].chapter, 14);
-  assert.equal(IRODORI_BOOKS.pemula.data.length, 0);
   assert.equal(IRODORI_BOOKS.dasar2.data.length, 0);
 });

@@ -51,6 +51,7 @@ export function KanjiListPanel({
         it.r.toLowerCase().includes(q) ||
         it.m.toLowerCase().includes(q) ||
         it.exi.toLowerCase().includes(q) ||
+        (it.romaji?.toLowerCase().includes(q) ?? false) ||
         (it.subSection?.toLowerCase().includes(q) ?? false) ||
         chapterLabel.includes(q)
       );
@@ -120,6 +121,11 @@ export function KanjiListPanel({
                   </span>
                 ) : null}
               </div>
+              {item.romaji ? (
+                <div className="text-[11px] sm:text-xs text-slate-500 truncate">
+                  {item.romaji}
+                </div>
+              ) : null}
               <div className="text-xs sm:text-sm text-slate-600 line-clamp-2">{item.m}</div>
               <div className="mt-1 text-xs font-medium text-slate-500 flex flex-wrap items-center gap-1.5">
                 {datasetMode === 'irodori' ? (
@@ -129,6 +135,14 @@ export function KanjiListPanel({
                 ) : (
                   <span>{LEVELS[item.dif].label}</span>
                 )}
+                {item.kanjiList && item.kanjiList.length > 0 ? (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span className="font-jp text-teal-700 font-semibold">
+                      Kanji: {item.kanjiList.join(' ')}
+                    </span>
+                  </>
+                ) : null}
                 {isMastered ? (
                   <>
                     <span aria-hidden="true">·</span>
@@ -221,7 +235,9 @@ export function KanjiListPanel({
 
       {filteredItems.length === 0 ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm font-medium text-slate-500">
-          Tidak ada hasil untuk &ldquo;{query.trim()}&rdquo;.
+          {query.trim()
+            ? `Tidak ada hasil untuk “${query.trim()}”.`
+            : 'Belum ada data kosakata pada bab ini.'}
         </div>
       ) : datasetMode === 'irodori' ? (
         <div className="space-y-6" id="kanjiList">

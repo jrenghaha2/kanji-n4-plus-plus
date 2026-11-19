@@ -156,18 +156,22 @@ export function FlashcardPanel({
       {isDone ? (
         <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center shadow-xs">
           <div className="text-4xl" aria-hidden="true">
-            🎉
+            {total === 0 && !hardMode && !hideMastered ? '📚' : '🎉'}
           </div>
-          <h2 className="mt-3 text-xl font-bold text-slate-900">Sesi selesai!</h2>
+          <h2 className="mt-3 text-xl font-bold text-slate-900">
+            {total === 0 && !hardMode && !hideMastered ? 'Belum ada data' : 'Sesi selesai!'}
+          </h2>
           <p className="mt-2 text-sm text-slate-600 font-medium">
             {total === 0
               ? hardMode
                 ? datasetMode === 'irodori'
                   ? 'Belum ada kosakata sulit di pilihan ini.'
                   : 'Belum ada kanji sulit di level ini.'
-                : datasetMode === 'irodori'
-                  ? 'Semua kosakata di pilihan ini sudah hafal.'
-                  : 'Semua kanji di level ini sudah hafal.'
+                : hideMastered
+                  ? datasetMode === 'irodori'
+                    ? 'Semua kosakata di pilihan ini sudah hafal.'
+                    : 'Semua kanji di level ini sudah hafal.'
+                  : 'Belum ada data kosakata pada bab ini.'
               : `${total} kartu diulas · ${sessionNewMaster} hafal baru · ${sessionHardCount} ditandai sulit`}
           </p>
 
@@ -253,6 +257,11 @@ export function FlashcardPanel({
                   <span className="font-jp text-2xl sm:text-4xl font-extrabold text-indigo-700">
                     {currentItem?.r}
                   </span>
+                  {currentItem?.romaji ? (
+                    <span className="mt-0.5 text-xs sm:text-sm text-slate-500 font-medium">
+                      {currentItem.romaji}
+                    </span>
+                  ) : null}
                   {currentItem?.accent ? (
                     <span className="mt-0.5 text-xs font-jp text-slate-500 font-medium">
                       Aksen: {currentItem.accent}
@@ -261,6 +270,11 @@ export function FlashcardPanel({
                   <span className="mt-1.5 text-base sm:text-xl font-bold text-slate-900">
                     {currentItem?.m}
                   </span>
+                  {currentItem?.kanjiList && currentItem.kanjiList.length > 0 ? (
+                    <span className="mt-1 text-xs font-semibold text-teal-700 font-jp">
+                      Kanji: {currentItem.kanjiList.join(' ・ ')}
+                    </span>
+                  ) : null}
                   <span className="mt-1.5 text-xs font-semibold text-slate-500">
                     {currentItem
                       ? datasetMode === 'irodori' && currentItem.chapter

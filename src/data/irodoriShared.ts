@@ -1,4 +1,5 @@
 import type {
+  CleanIrodoriJsonItem,
   DifficultyLevel,
   IrodoriChapterFilter,
   IrodoriChapterMeta,
@@ -29,6 +30,13 @@ export function chapterToDifficulty(ch: IrodoriChapterNumber): DifficultyLevel {
   return 'hard';
 }
 
+export function parseIrodoriBab(bab: string): IrodoriChapterNumber {
+  const match = bab.match(/\d+/);
+  const num = match ? Number(match[0]) : 1;
+  if (num >= 1 && num <= 18) return num as IrodoriChapterNumber;
+  return 1;
+}
+
 export function buildIrodoriEntries(
   rawTuples: readonly RawIrodoriTuple[],
   idPrefix: string
@@ -48,6 +56,30 @@ export function buildIrodoriEntries(
       subSection,
     })
   );
+}
+
+export function buildIrodoriCleanEntries(
+  items: readonly CleanIrodoriJsonItem[],
+  idPrefix: string
+): KanjiEntry[] {
+  return items.map((item, idx) => {
+    const chapter = parseIrodoriBab(item.bab);
+    return {
+      id: `${idPrefix}${idx + 1}`,
+      k: item.kosakata,
+      r: item.r ?? item.kosakata,
+      m: item.arti,
+      ex: item.ex ?? item.kosakata.replace(/[()（）]/g, '') + '。',
+      exi: item.exi ?? item.arti,
+      lv: 'N4',
+      dif: chapterToDifficulty(chapter),
+      chapter,
+      accent: item.accent,
+      subSection: item.subSection ?? item.bab,
+      romaji: item.romaji,
+      kanjiList: item.kanji,
+    };
+  });
 }
 
 export function getIrodoriPoolIndicesForDataset(

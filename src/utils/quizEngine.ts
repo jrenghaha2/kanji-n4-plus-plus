@@ -113,7 +113,15 @@ export function buildQuizBank(
 export function dispOf(item: KanjiEntry, key: QuizModelKey, exMeta: SentenceBlank | null): string {
   if (key === 'k2r') return item.r;
   if (key === 'k2m') return item.m;
-  if (key === 'ex2k' && exMeta) return conjugateWord(item, exMeta.form);
+  if (key === 'ex2k' && exMeta) {
+    const surface = conjugateWord(item, exMeta.form);
+    if (exMeta.form === 'dict' && /[()（）]/.test(surface) && !/[()（）]/.test(exMeta.targetSurface)) {
+      const expanded = surface.replace(/[()（）]/g, '');
+      if (item.k === exMeta.targetSurface) return surface;
+      return expanded;
+    }
+    return surface;
+  }
   return item.k;
 }
 

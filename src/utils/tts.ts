@@ -32,9 +32,10 @@ function playOnlineTTSFallback(text: string): void {
 }
 
 export function speakJP(text: string): void {
-  if (!text || typeof window === 'undefined') return;
+  const cleanText = text.replace(/[()（）]/g, '').trim();
+  if (!cleanText || typeof window === 'undefined') return;
   if (!('speechSynthesis' in window)) {
-    playOnlineTTSFallback(text);
+    playOnlineTTSFallback(cleanText);
     return;
   }
   loadVoices();
@@ -45,7 +46,7 @@ export function speakJP(text: string): void {
   if (window.speechSynthesis.paused) {
     window.speechSynthesis.resume();
   }
-  const utterance = new SpeechSynthesisUtterance(text);
+  const utterance = new SpeechSynthesisUtterance(cleanText);
   utterance.lang = 'ja-JP';
   utterance.rate = 0.9;
   if (jpVoice) utterance.voice = jpVoice;
@@ -55,7 +56,7 @@ export function speakJP(text: string): void {
     started = true;
   };
   utterance.onerror = () => {
-    if (!started) playOnlineTTSFallback(text);
+    if (!started) playOnlineTTSFallback(cleanText);
   };
   setTimeout(() => {
     if (activeUtterance !== utterance) return;
@@ -63,7 +64,7 @@ export function speakJP(text: string): void {
     if (!jpVoice) {
       setTimeout(() => {
         if (!started && !window.speechSynthesis.speaking) {
-          playOnlineTTSFallback(text);
+          playOnlineTTSFallback(cleanText);
         }
       }, 600);
     }

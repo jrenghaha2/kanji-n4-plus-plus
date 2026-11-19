@@ -66,6 +66,19 @@ export interface IrodoriBookConfig {
   validIds: Set<string>;
 }
 
+export interface CleanIrodoriJsonItem {
+  bab: string;
+  kosakata: string;
+  romaji: string;
+  arti: string;
+  kanji: string[];
+  r?: string;
+  accent?: string;
+  subSection?: string;
+  ex?: string;
+  exi?: string;
+}
+
 export interface KanjiEntry {
   id: string;
   k: string;
@@ -78,6 +91,8 @@ export interface KanjiEntry {
   chapter?: IrodoriChapterNumber;
   accent?: string;
   subSection?: string;
+  romaji?: string;
+  kanjiList?: string[];
 }
 
 export type WordPos = 'ichidan' | 'godan' | 'iadj' | 'noun';

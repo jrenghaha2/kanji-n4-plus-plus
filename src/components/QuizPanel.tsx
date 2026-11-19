@@ -615,7 +615,11 @@ export function QuizPanel({
               </button>
             </div>
 
-            {disabledPresets.length > 0 ? (
+            {totalBank === 0 ? (
+              <p className="mt-2.5 text-xs font-medium text-amber-800">
+                Belum ada data kosakata pada bab ini untuk dijadikan kuis.
+              </p>
+            ) : disabledPresets.length > 0 ? (
               <p className="mt-2.5 text-xs font-medium text-amber-800">
                 Total bank soal pada filter ini adalah {totalBank} soal, sehingga opsi{' '}
                 {disabledPresets.join(', ')} dinonaktifkan.

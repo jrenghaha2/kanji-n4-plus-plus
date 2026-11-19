@@ -6,7 +6,7 @@ import type {
 } from '../types/kanji';
 
 export const IRODORI_PDF_PATH =
-  './assets/aistudio/Daftar_Kosakata_Buku_Tingkat_Dasar_1__Ver.2021-10-01__f2ca36e1.pdf';
+  'https://drive.google.com/file/d/1WsoXCZjCcOYGG_3FlVNbQjDxeQvim6-E/view?pli=1';
 
 export interface IrodoriChapterMeta {
   chapter: IrodoriChapterNumber;

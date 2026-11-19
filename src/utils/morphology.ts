@@ -20,10 +20,55 @@ export const NOUN_EXCEPTIONS = new Set<string>([
   '曇り',
   '匂い',
   'お土産',
+  '手洗い',
+  'はい',
+  'いいえ',
+  'いえ',
+  'だいたい',
+  'よく',
+  '近く',
+  'すぐ',
+  'もうすぐ',
+  'いつ',
+  'いくつ',
+  'くつ',
+  'えんぴつ',
+  'いす',
+  'こしょう',
+  'どう',
+  'そう',
+  'そうそう',
+  'あのう',
+  '1つ',
+  '2つ',
+  '3つ',
+  '4つ',
+  '5つ',
+  '6つ',
+  '7つ',
+  '8つ',
+  '9つ',
+  'たい焼き',
+  '食べ放題',
+  '飲み放題',
+  'お祈り',
+  '残り',
+  '上り',
+  '下り',
+  '通り',
+  'お会計',
+  '朝礼',
+  '飲み会',
+  '試合',
+  '夏祭り',
+  'おしゃべり',
+  'おしぼり',
+  'かみそり',
+  'おいそぎ',
 ]);
 
 /**
- * Na-adjectives in the JLPT N4 dataset.
+ * Na-adjectives in the JLPT N4 and Irodori datasets.
  */
 export const NA_ADJECTIVES = new Set<string>([
   '安全',
@@ -47,6 +92,20 @@ export const NA_ADJECTIVES = new Set<string>([
   '熱心',
   '丁寧',
   '複雑',
+  'きれい',
+  '静か',
+  'にぎやか',
+  '大好き',
+  '好き',
+  'すてき',
+  'おしゃれ',
+  '変',
+  'だいじょうぶ',
+  'だめ',
+  'まあまあ',
+  '大変',
+  'いまいち',
+  '完全',
 ]);
 
 /**
@@ -193,6 +252,12 @@ export const KNOWN_ICHIDAN_VERBS = new Set<string>([
   '褒める',
   '植える',
   '捨てる',
+  'いる',
+  '入れる',
+  '着替える',
+  '乗り換える',
+  '温める',
+  '閉じる',
 ]);
 
 const I_MAP: Record<string, string> = {
@@ -238,14 +303,20 @@ export function getWordMeta(item: Pick<KanjiEntry, 'k' | 'r'>): WordMeta {
   if (NOUN_EXCEPTIONS.has(k) || k === '手洗い') {
     return { pos: 'noun', subPos: 'noun' };
   }
-  if (k.endsWith('する') && k.length > 2) {
+  if (NA_ADJECTIVES.has(k)) {
+    return { pos: 'noun', subPos: 'naadj' };
+  }
+  if (k === 'する' || (k.endsWith('する') && k.length > 2)) {
     return { pos: 'noun', subPos: 'suru' };
   }
-  if (k.endsWith('来る') && k.length > 2) {
+  if (k === '来る' || (k.endsWith('来る') && k.length > 2)) {
     return { pos: 'godan', subPos: 'verb' };
   }
   if (k.endsWith('い')) {
     return { pos: 'iadj', subPos: 'iadj' };
+  }
+  if (k.endsWith('ます') || k.endsWith('ません') || k.endsWith('ました') || k.endsWith('ください')) {
+    return { pos: 'noun', subPos: 'noun' };
   }
   if (KNOWN_ICHIDAN_VERBS.has(k)) {
     return { pos: 'ichidan', subPos: 'verb' };
@@ -259,9 +330,6 @@ export function getWordMeta(item: Pick<KanjiEntry, 'k' | 'r'>): WordMeta {
     }
     return { pos: 'godan', subPos: 'verb' };
   }
-  if (NA_ADJECTIVES.has(k)) {
-    return { pos: 'noun', subPos: 'naadj' };
-  }
   if (SURU_NOUNS.has(k)) {
     return { pos: 'noun', subPos: 'suru' };
   }
@@ -272,7 +340,7 @@ export function conjugateWord(item: Pick<KanjiEntry, 'k' | 'r'>, form: Conjugati
   const { pos } = getWordMeta(item);
   const k = item.k;
 
-  if (k.endsWith('する') && k.length > 2) {
+  if (k === 'する' || (k.endsWith('する') && k.length > 2)) {
     const base = k.slice(0, -2);
     switch (form) {
       case 'masu_stem':
@@ -300,7 +368,7 @@ export function conjugateWord(item: Pick<KanjiEntry, 'k' | 'r'>, form: Conjugati
     }
   }
 
-  if (k.endsWith('来る') && k.length > 2) {
+  if (k === '来る' || (k.endsWith('来る') && k.length > 2)) {
     const base = k.slice(0, -2);
     switch (form) {
       case 'masu_stem':
@@ -320,6 +388,17 @@ export function conjugateWord(item: Pick<KanjiEntry, 'k' | 'r'>, form: Conjugati
       default:
         return k;
     }
+  }
+
+  if (k === '行く' && form === 'te') {
+    return '行って';
+  }
+
+  if (k === 'いい' || k === '気持ちいい' || k === 'かっこいい') {
+    const prefix = k.slice(0, -2);
+    if (form === 'i_ku') return prefix + 'よく';
+    if (form === 'i_katta') return prefix + 'よかった';
+    return k;
   }
 
   const stem = k.slice(0, -1);
@@ -452,9 +531,20 @@ export function analyzeSentenceBlank(item: KanjiEntry): SentenceBlank {
     }
   }
 
-  // Noun / na-adj / suru-noun: inspect following characters to determine grammatical slot
-  const idx = ex.indexOf(item.k);
-  const after = idx >= 0 ? ex.slice(idx + item.k.length) : '';
+  // Noun / na-adj / suru-noun / fixed phrase: inspect following characters to determine grammatical slot
+  let targetSurface = item.k;
+  if (!ex.includes(targetSurface) && /[()（）]/.test(item.k)) {
+    const expanded = item.k.replace(/[()（）]/g, '');
+    const shortened = item.k.replace(/[（(][^）)]*[）)]/g, '').trim();
+    if (expanded && ex.includes(expanded)) {
+      targetSurface = expanded;
+    } else if (shortened && ex.includes(shortened)) {
+      targetSurface = shortened;
+    }
+  }
+
+  const idx = ex.indexOf(targetSurface);
+  const after = idx >= 0 ? ex.slice(idx + targetSurface.length) : '';
 
   let blankContext: BlankContextKind = 'noun_general';
   if (
@@ -472,8 +562,8 @@ export function analyzeSentenceBlank(item: KanjiEntry): SentenceBlank {
   }
 
   return {
-    maskedEx: replaceAllOccurrences(ex, item.k, '（　　）'),
-    targetSurface: item.k,
+    maskedEx: replaceAllOccurrences(ex, targetSurface, '（　　）'),
+    targetSurface,
     form: 'dict',
     subPos,
     blankContext,
