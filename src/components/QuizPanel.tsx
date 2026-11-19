@@ -8,6 +8,8 @@ import type {
   IrodoriChapterFilter,
   IrodoriChapterNumber,
   IrodoriChapterSelection,
+  IrodoriKanjiScope,
+  KanjiEntry,
   LevelFilter,
   QuizAnswerSnapshot,
   QuizDatasetId,
@@ -17,6 +19,10 @@ import type {
   QuizSessionHistoryEntry,
   QuizTypeChoice,
 } from '../types/kanji';
+import {
+  IRODORI_KANJI_SCOPE_META,
+  matchesIrodoriKanjiScope,
+} from '../utils/irodoriKanjiFilter';
 import {
   buildQuizBank,
   buildQuizSession,
@@ -57,6 +63,7 @@ interface QuizPanelProps {
   irodoriBook?: IrodoriBookConfig;
   levelFilter: LevelFilter;
   chapterFilter?: IrodoriChapterFilter;
+  irodoriKanjiScope?: IrodoriKanjiScope;
   modalOpen: boolean;
   quizHistory?: QuizSessionHistoryEntry[];
   cloudSyncEnabled?: boolean;
@@ -72,6 +79,7 @@ export function QuizPanel({
   irodoriBook = IRODORI_BOOKS.dasar1,
   levelFilter,
   chapterFilter = 'all',
+  irodoriKanjiScope = 'all',
   modalOpen,
   quizHistory: controlledQuizHistory,
   cloudSyncEnabled = false,
@@ -84,6 +92,11 @@ export function QuizPanel({
   const historyStorageKey =
     datasetMode === 'irodori' ? irodoriBook.quizHistoryKey : QUIZ_HISTORY_KEY;
 
+  const kanjiEntryFilter = useMemo<((item: KanjiEntry) => boolean) | undefined>(() => {
+    if (datasetMode !== 'irodori' || irodoriKanjiScope === 'all') return undefined;
+    return (item: KanjiEntry) => matchesIrodoriKanjiScope(item, irodoriKanjiScope);
+  }, [datasetMode, irodoriKanjiScope]);
+
   const [selectedChapters, setSelectedChapters] = useState<IrodoriChapterNumber[]>(() =>
     chapterFilter === 'all' ? [...IRODORI_CHAPTER_NUMBERS] : [chapterFilter]
   );
@@ -93,13 +106,14 @@ export function QuizPanel({
     for (const ch of IRODORI_CHAPTER_NUMBERS) counts[ch] = 0;
     if (datasetMode === 'irodori') {
       for (const item of irodoriBook.data) {
+        if (kanjiEntryFilter && !kanjiEntryFilter(item)) continue;
         if (item.chapter !== undefined) {
           counts[item.chapter] = (counts[item.chapter] ?? 0) + 1;
         }
       }
     }
     return counts;
-  }, [datasetMode, irodoriBook.data]);
+  }, [datasetMode, irodoriBook.data, kanjiEntryFilter]);
 
   const activeChapterFilter: IrodoriChapterSelection | undefined = useMemo(() => {
     if (datasetMode !== 'irodori') return undefined;
@@ -109,7 +123,11 @@ export function QuizPanel({
 
   const activeScopeLabel =
     datasetMode === 'irodori'
-      ? formatChapterSelectionLabel(selectedChapters, IRODORI_CHAPTER_NUMBERS.length)
+      ? `${formatChapterSelectionLabel(selectedChapters, IRODORI_CHAPTER_NUMBERS.length)}${
+          irodoriKanjiScope !== 'all'
+            ? ` · ${IRODORI_KANJI_SCOPE_META[irodoriKanjiScope].label}`
+            : ''
+        }`
       : `Level ${LEVELS[levelFilter].label}`;
 
   const [stage, setStage] = useState<QuizStage>('setup');
@@ -177,6 +195,15 @@ export function QuizPanel({
     );
   }, [datasetMode, irodoriBook.id, levelFilter, chapterFilter]);
 
+  // Reset running quiz back to setup if Kanji filter changes while preserving selected chapters
+  useEffect(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setStage('setup');
+    setLocked(false);
+    setSelectedIdx(null);
+    setWrongFeedback(null);
+  }, [irodoriKanjiScope]);
+
   const toggleFurigana = useCallback(() => {
     setShowFurigana(prev => {
       const next = !prev;
@@ -225,13 +252,20 @@ export function QuizPanel({
   );
 
   const kanjiCount = useMemo(
-    () => getPoolIndices(levelFilter, activeDataset, activeChapterFilter).length,
-    [levelFilter, activeDataset, activeChapterFilter]
+    () => getPoolIndices(levelFilter, activeDataset, activeChapterFilter, kanjiEntryFilter).length,
+    [levelFilter, activeDataset, activeChapterFilter, kanjiEntryFilter]
   );
   const modelCount = getActiveTypeKeys(quizTypeChoice).length;
   const totalBank = useMemo(
-    () => buildQuizBank(levelFilter, quizTypeChoice, activeDataset, activeChapterFilter).length,
-    [levelFilter, quizTypeChoice, activeDataset, activeChapterFilter]
+    () =>
+      buildQuizBank(
+        levelFilter,
+        quizTypeChoice,
+        activeDataset,
+        activeChapterFilter,
+        kanjiEntryFilter
+      ).length,
+    [levelFilter, quizTypeChoice, activeDataset, activeChapterFilter, kanjiEntryFilter]
   );
   const hasKanaFilteredModels = totalBank < kanjiCount * modelCount;
   const disabledPresets = PRESET_COUNTS.filter(c => c > totalBank);
@@ -245,7 +279,8 @@ export function QuizPanel({
         requested,
         activeDataset,
         Math.random,
-        activeChapterFilter
+        activeChapterFilter,
+        kanjiEntryFilter
       );
       if (!session.length) return;
       sessionSavedRef.current = false;
@@ -275,6 +310,7 @@ export function QuizPanel({
       quizTypeChoice,
       activeDataset,
       activeChapterFilter,
+      kanjiEntryFilter,
       activeScopeLabel,
       historyStorageKey,
     ]
@@ -425,6 +461,7 @@ export function QuizPanel({
       <QuizSetupView
         datasetMode={datasetMode}
         irodoriBook={irodoriBook}
+        irodoriKanjiScope={irodoriKanjiScope}
         selectedChapters={selectedChapters}
         chapterCounts={chapterCounts}
         quizTypeChoice={quizTypeChoice}

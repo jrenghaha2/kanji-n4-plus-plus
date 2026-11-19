@@ -125,15 +125,18 @@ export function formatChapterSelectionLabel(
 export function getPoolIndices(
   levelFilter: LevelFilter,
   dataset: readonly KanjiEntry[] = KANJI,
-  chapterFilter?: IrodoriChapterSelection
+  chapterFilter?: IrodoriChapterSelection,
+  entryFilter?: (item: KanjiEntry) => boolean
 ): number[] {
   const out: number[] = [];
   for (let i = 0; i < dataset.length; i++) {
+    const item = dataset[i];
+    if (entryFilter && !entryFilter(item)) continue;
     if (chapterFilter !== undefined) {
-      if (matchesChapterSelection(dataset[i].chapter, chapterFilter)) {
+      if (matchesChapterSelection(item.chapter, chapterFilter)) {
         out.push(i);
       }
-    } else if (levelFilter === 'all' || dataset[i].dif === levelFilter) {
+    } else if (levelFilter === 'all' || item.dif === levelFilter) {
       out.push(i);
     }
   }
@@ -231,9 +234,10 @@ export function buildQuizBank(
   levelFilter: LevelFilter,
   choice: QuizTypeChoice,
   dataset: readonly KanjiEntry[] = KANJI,
-  chapterFilter?: IrodoriChapterSelection
+  chapterFilter?: IrodoriChapterSelection,
+  entryFilter?: (item: KanjiEntry) => boolean
 ): QuizBankEntry[] {
-  const indices = getPoolIndices(levelFilter, dataset, chapterFilter);
+  const indices = getPoolIndices(levelFilter, dataset, chapterFilter, entryFilter);
   const keys = getActiveTypeKeys(choice);
   const bank: QuizBankEntry[] = [];
   for (const kanjiIdx of indices) {
@@ -905,7 +909,8 @@ export function pickDistractors(
   levelFilter: LevelFilter = 'all',
   dataset: readonly KanjiEntry[] = KANJI,
   rng: () => number = Math.random,
-  chapterFilter?: IrodoriChapterSelection
+  chapterFilter?: IrodoriChapterSelection,
+  entryFilter?: (item: KanjiEntry) => boolean
 ): KanjiEntry[] {
   const index = getDatasetCollisionIndex(dataset);
   const targetDisp = dispOf(item, key, exMeta);
@@ -953,18 +958,26 @@ export function pickDistractors(
   };
 
   const matchesActiveScope = (it: KanjiEntry): boolean => {
+    if (entryFilter && !entryFilter(it)) return false;
     if (chapterFilter !== undefined) {
       return matchesChapterSelection(it.chapter, chapterFilter);
     }
     return levelFilter === 'all' || it.dif === levelFilter;
   };
 
-  // Prioritize candidates from the active level/chapter filter so focused quizzes keep relevant distractors.
+  // Prioritize candidates from the active level/chapter/kanji filter so focused quizzes keep relevant distractors.
   const sameLevelAll = dataset.filter(it => matchesActiveScope(it) && isEligibleBase(it));
   const crossLevelAll =
+    !entryFilter &&
     (chapterFilter !== undefined ? isAllChaptersSelected(chapterFilter) : levelFilter === 'all')
       ? []
       : dataset.filter(it => !matchesActiveScope(it) && isEligibleBase(it));
+  const sameFilterCrossChapter = entryFilter
+    ? crossLevelAll.filter(it => entryFilter(it))
+    : [];
+  const otherFilterFallback = entryFilter
+    ? crossLevelAll.filter(it => !entryFilter(it))
+    : crossLevelAll;
 
   const scoreCandidate = (it: KanjiEntry, isSameLevel: boolean): number => {
     const candDisp = dispOf(it, key, exMeta);
@@ -1057,30 +1070,60 @@ export function pickDistractors(
   const tiers: KanjiEntry[][] =
     key === 'ex2k' && exMeta
       ? isChapterScoped
-        ? [
-            sameLevelAll.filter(it => isCompatibleForBlank(it, exMeta) && isPlausible(it)),
-            crossLevelAll.filter(it => isCompatibleForBlank(it, exMeta) && isPlausible(it)),
-            sameLevelAll.filter(it => isCompatibleForBlank(it, exMeta)),
-            crossLevelAll.filter(it => isCompatibleForBlank(it, exMeta)),
-            sameLevelAll.filter(isPlausible),
-            crossLevelAll.filter(isPlausible),
-            sameLevelAll,
-            crossLevelAll,
-          ]
+        ? entryFilter
+          ? [
+              sameLevelAll.filter(it => isCompatibleForBlank(it, exMeta) && isPlausible(it)),
+              sameFilterCrossChapter.filter(
+                it => isCompatibleForBlank(it, exMeta) && isPlausible(it)
+              ),
+              sameLevelAll.filter(it => isCompatibleForBlank(it, exMeta)),
+              sameFilterCrossChapter.filter(it => isCompatibleForBlank(it, exMeta)),
+              otherFilterFallback.filter(
+                it => isCompatibleForBlank(it, exMeta) && isPlausible(it)
+              ),
+              otherFilterFallback.filter(it => isCompatibleForBlank(it, exMeta)),
+              sameLevelAll.filter(isPlausible),
+              sameFilterCrossChapter.filter(isPlausible),
+              otherFilterFallback.filter(isPlausible),
+              sameLevelAll,
+              sameFilterCrossChapter,
+              otherFilterFallback,
+            ]
+          : [
+              sameLevelAll.filter(it => isCompatibleForBlank(it, exMeta) && isPlausible(it)),
+              crossLevelAll.filter(it => isCompatibleForBlank(it, exMeta) && isPlausible(it)),
+              sameLevelAll.filter(it => isCompatibleForBlank(it, exMeta)),
+              crossLevelAll.filter(it => isCompatibleForBlank(it, exMeta)),
+              sameLevelAll.filter(isPlausible),
+              crossLevelAll.filter(isPlausible),
+              sameLevelAll,
+              crossLevelAll,
+            ]
         : [
             sameLevelAll.filter(it => isCompatibleForBlank(it, exMeta)),
-            crossLevelAll.filter(it => isCompatibleForBlank(it, exMeta)),
+            sameFilterCrossChapter.filter(it => isCompatibleForBlank(it, exMeta)),
+            otherFilterFallback.filter(it => isCompatibleForBlank(it, exMeta)),
             sameLevelAll,
-            crossLevelAll,
+            sameFilterCrossChapter,
+            otherFilterFallback,
           ]
       : isChapterScoped
-        ? [
-            sameLevelAll.filter(isPlausible),
-            crossLevelAll.filter(isPlausible),
-            sameLevelAll,
-            crossLevelAll,
-          ]
-        : [sameLevelAll, crossLevelAll];
+        ? entryFilter
+          ? [
+              sameLevelAll.filter(isPlausible),
+              sameFilterCrossChapter.filter(isPlausible),
+              sameLevelAll,
+              sameFilterCrossChapter,
+              otherFilterFallback.filter(isPlausible),
+              otherFilterFallback,
+            ]
+          : [
+              sameLevelAll.filter(isPlausible),
+              crossLevelAll.filter(isPlausible),
+              sameLevelAll,
+              crossLevelAll,
+            ]
+        : [sameLevelAll, sameFilterCrossChapter, otherFilterFallback];
 
   const seenLabels = new Set<string>([targetDisp]);
   const seenIds = new Set<string>([item.id]);
@@ -1166,7 +1209,8 @@ export function makeQuestion(
   levelFilter: LevelFilter = 'all',
   dataset: readonly KanjiEntry[] = KANJI,
   rng: () => number = Math.random,
-  chapterFilter?: IrodoriChapterSelection
+  chapterFilter?: IrodoriChapterSelection,
+  entryFilter?: (item: KanjiEntry) => boolean
 ): QuizQuestion {
   const exMeta = typeKey === 'ex2k' ? analyzeSentenceBlank(item) : null;
   const distractors = pickDistractors(
@@ -1177,7 +1221,8 @@ export function makeQuestion(
     levelFilter,
     dataset,
     rng,
-    chapterFilter
+    chapterFilter,
+    entryFilter
   );
   const options: QuizOption[] = shuffled([item, ...distractors], rng).map(optItem => ({
     item: optItem,
@@ -1200,9 +1245,10 @@ export function buildQuizSession(
   requestedCount: number | 'all',
   dataset: readonly KanjiEntry[] = KANJI,
   rng: () => number = Math.random,
-  chapterFilter?: IrodoriChapterSelection
+  chapterFilter?: IrodoriChapterSelection,
+  entryFilter?: (item: KanjiEntry) => boolean
 ): QuizQuestion[] {
-  const bank = shuffled(buildQuizBank(levelFilter, choice, dataset, chapterFilter), rng);
+  const bank = shuffled(buildQuizBank(levelFilter, choice, dataset, chapterFilter, entryFilter), rng);
   if (bank.length === 0) return [];
   const count =
     requestedCount === 'all'
@@ -1210,7 +1256,15 @@ export function buildQuizSession(
       : Math.max(1, Math.min(Math.floor(requestedCount) || 10, bank.length));
 
   return bank.slice(0, count).map(entry =>
-    makeQuestion(dataset[entry.kanjiIdx], entry.typeKey, levelFilter, dataset, rng, chapterFilter)
+    makeQuestion(
+      dataset[entry.kanjiIdx],
+      entry.typeKey,
+      levelFilter,
+      dataset,
+      rng,
+      chapterFilter,
+      entryFilter
+    )
   );
 }
 

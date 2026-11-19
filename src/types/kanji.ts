@@ -27,6 +27,7 @@ export type IrodoriBookId = 'pemula' | 'dasar1' | 'dasar2';
 
 export type IrodoriChapterFilter = 'all' | IrodoriChapterNumber;
 export type IrodoriChapterSelection = IrodoriChapterFilter | readonly IrodoriChapterNumber[];
+export type IrodoriKanjiScope = 'all' | 'jft' | 'advanced';
 
 export interface IrodoriChapterMeta {
   chapter: IrodoriChapterNumber;

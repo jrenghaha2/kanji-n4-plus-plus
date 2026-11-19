@@ -22,9 +22,15 @@ import type {
   AppTab,
   IrodoriBookId,
   IrodoriChapterFilter,
+  IrodoriKanjiScope,
   KanjiEntry,
   LevelFilter,
 } from './types/kanji';
+import {
+  IRODORI_KANJI_SCOPE_META,
+  countIrodoriKanjiScopes,
+  matchesIrodoriKanjiScope,
+} from './utils/irodoriKanjiFilter';
 import { markKanjiHard, markKanjiMastered } from './utils/progressSync';
 import { getPoolIndices, shuffled } from './utils/quizEngine';
 import { speakJP } from './utils/tts';
@@ -35,6 +41,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<AppTab>('card');
   const [levelFilter, setLevelFilter] = useState<LevelFilter>('all');
   const [chapterFilter, setChapterFilter] = useState<IrodoriChapterFilter>('all');
+  const [irodoriKanjiScope, setIrodoriKanjiScope] = useState<IrodoriKanjiScope>('all');
 
   const [hardMode, setHardMode] = useState(false);
   const [shuffleOn, setShuffleOn] = useState(false);
@@ -122,9 +129,15 @@ export default function App() {
     datasetMode === 'irodori' ? activeIrodoriBook.validIds : VALID_KANJI_IDS;
   const activeScopeLabel =
     datasetMode === 'irodori'
-      ? chapterFilter === 'all'
-        ? 'Semua Bab (1–18)'
-        : activeIrodoriBook.chapters[chapterFilter].label
+      ? `${
+          chapterFilter === 'all'
+            ? 'Semua Bab (1–18)'
+            : activeIrodoriBook.chapters[chapterFilter].label
+        }${
+          irodoriKanjiScope !== 'all'
+            ? ` · ${IRODORI_KANJI_SCOPE_META[irodoriKanjiScope].label}`
+            : ''
+        }`
       : levelFilter;
 
   const computeCardPoolFor = useCallback(
@@ -133,13 +146,18 @@ export default function App() {
       bookId: IrodoriBookId,
       lv: LevelFilter,
       ch: IrodoriChapterFilter,
+      kanjiScope: IrodoriKanjiScope,
       hideM: boolean,
       onlyH: boolean,
       mSet: Set<string>,
       hSet: Set<string>
     ) => {
       const ds = mode === 'irodori' ? IRODORI_BOOKS[bookId].data : KANJI;
-      const pool = getPoolIndices(lv, ds, mode === 'irodori' ? ch : undefined);
+      const entryFilter =
+        mode === 'irodori' && kanjiScope !== 'all'
+          ? (item: KanjiEntry) => matchesIrodoriKanjiScope(item, kanjiScope)
+          : undefined;
+      const pool = getPoolIndices(lv, ds, mode === 'irodori' ? ch : undefined, entryFilter);
       return pool.filter(
         i => (!hideM || !mSet.has(ds[i].id)) && (!onlyH || hSet.has(ds[i].id))
       );
@@ -160,12 +178,13 @@ export default function App() {
         irodoriBookId,
         lv,
         chapterFilter,
+        irodoriKanjiScope,
         hideM,
         onlyH,
         mSet,
         hSet
       ),
-    [computeCardPoolFor, datasetMode, irodoriBookId, chapterFilter]
+    [computeCardPoolFor, datasetMode, irodoriBookId, chapterFilter, irodoriKanjiScope]
   );
 
   const rebuildOrder = useCallback((indices: number[], shouldShuffle: boolean) => {
@@ -213,14 +232,33 @@ export default function App() {
     }
   }, [user, clearPendingRestore]);
 
+  const activeIrodoriEntryFilter = useMemo(() => {
+    if (datasetMode !== 'irodori' || irodoriKanjiScope === 'all') return undefined;
+    return (item: KanjiEntry) => matchesIrodoriKanjiScope(item, irodoriKanjiScope);
+  }, [datasetMode, irodoriKanjiScope]);
+
+  const irodoriKanjiScopeCounts = useMemo(() => {
+    const scopeEntries =
+      activeTab !== 'quiz' && chapterFilter !== 'all'
+        ? activeIrodoriBook.data.filter(it => it.chapter === chapterFilter)
+        : activeIrodoriBook.data;
+    return countIrodoriKanjiScopes(scopeEntries);
+  }, [activeIrodoriBook.data, activeTab, chapterFilter]);
+
+  const irodoriKanjiContextLabel =
+    activeTab !== 'quiz' && chapterFilter !== 'all'
+      ? activeIrodoriBook.chapters[chapterFilter].label
+      : undefined;
+
   const levelIndices = useMemo(
     () =>
       getPoolIndices(
         levelFilter,
         activeDataset,
-        datasetMode === 'irodori' ? chapterFilter : undefined
+        datasetMode === 'irodori' ? chapterFilter : undefined,
+        activeIrodoriEntryFilter
       ),
-    [levelFilter, activeDataset, datasetMode, chapterFilter]
+    [levelFilter, activeDataset, datasetMode, chapterFilter, activeIrodoriEntryFilter]
   );
   const levelMasteredCount = useMemo(
     () => levelIndices.filter(i => activeMastered.has(activeDataset[i].id)).length,
@@ -258,6 +296,7 @@ export default function App() {
       irodoriBookId,
       levelFilter,
       chapterFilter,
+      irodoriKanjiScope,
       hideMastered,
       hardMode,
       nextM,
@@ -273,6 +312,7 @@ export default function App() {
     irodoriBookId,
     levelFilter,
     chapterFilter,
+    irodoriKanjiScope,
     hideMastered,
     hardMode,
     rebuildOrder,
@@ -290,6 +330,7 @@ export default function App() {
         nextBookId,
         levelFilter,
         'all',
+        irodoriKanjiScope,
         hideMastered,
         hardMode,
         nextBookProgress.mastered,
@@ -303,6 +344,7 @@ export default function App() {
       irodoriProgress,
       computeCardPoolFor,
       levelFilter,
+      irodoriKanjiScope,
       hideMastered,
       hardMode,
       rebuildOrder,
@@ -319,6 +361,7 @@ export default function App() {
         irodoriBookId,
         nextLevel,
         chapterFilter,
+        irodoriKanjiScope,
         hideMastered,
         hardMode,
         mastered,
@@ -331,6 +374,7 @@ export default function App() {
       computeCardPoolFor,
       irodoriBookId,
       chapterFilter,
+      irodoriKanjiScope,
       hideMastered,
       hardMode,
       mastered,
@@ -349,6 +393,7 @@ export default function App() {
         irodoriBookId,
         levelFilter,
         nextChapter,
+        irodoriKanjiScope,
         hideMastered,
         hardMode,
         activeIrodoriProgress.mastered,
@@ -361,6 +406,38 @@ export default function App() {
       computeCardPoolFor,
       irodoriBookId,
       levelFilter,
+      irodoriKanjiScope,
+      hideMastered,
+      hardMode,
+      activeIrodoriProgress,
+      rebuildOrder,
+      shuffleOn,
+    ]
+  );
+
+  const handleSelectIrodoriKanjiScope = useCallback(
+    (nextScope: IrodoriKanjiScope) => {
+      if (nextScope === irodoriKanjiScope) return;
+      setIrodoriKanjiScope(nextScope);
+      const nextPool = computeCardPoolFor(
+        'irodori',
+        irodoriBookId,
+        levelFilter,
+        chapterFilter,
+        nextScope,
+        hideMastered,
+        hardMode,
+        activeIrodoriProgress.mastered,
+        activeIrodoriProgress.hard
+      );
+      rebuildOrder(nextPool, shuffleOn);
+    },
+    [
+      irodoriKanjiScope,
+      computeCardPoolFor,
+      irodoriBookId,
+      levelFilter,
+      chapterFilter,
       hideMastered,
       hardMode,
       activeIrodoriProgress,
@@ -642,6 +719,10 @@ export default function App() {
             <IrodoriBookMenu
               selectedBookId={irodoriBookId}
               onSelectBook={handleSelectIrodoriBook}
+              kanjiScope={irodoriKanjiScope}
+              kanjiScopeCounts={irodoriKanjiScopeCounts}
+              kanjiScopeContextLabel={irodoriKanjiContextLabel}
+              onSelectKanjiScope={handleSelectIrodoriKanjiScope}
             />
           ) : null}
 
@@ -652,6 +733,7 @@ export default function App() {
               activeTab={activeTab}
               levelFilter={levelFilter}
               chapterFilter={chapterFilter}
+              irodoriKanjiScope={irodoriKanjiScope}
               onSelectTab={setActiveTab}
               onSelectLevel={handleSelectLevel}
               onSelectChapter={handleSelectChapter}
@@ -714,6 +796,7 @@ export default function App() {
                   irodoriBook={activeIrodoriBook}
                   levelFilter={levelFilter}
                   chapterFilter={chapterFilter}
+                  irodoriKanjiScope={irodoriKanjiScope}
                   mastered={activeMastered}
                   hardSet={activeHardSet}
                 />
@@ -725,6 +808,7 @@ export default function App() {
                   irodoriBook={activeIrodoriBook}
                   levelFilter={levelFilter}
                   chapterFilter={chapterFilter}
+                  irodoriKanjiScope={irodoriKanjiScope}
                   modalOpen={anyModalOpen}
                   quizHistory={quizHistories[activeQuizDatasetId]}
                   cloudSyncEnabled={Boolean(user && user.emailVerified)}

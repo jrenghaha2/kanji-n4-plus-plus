@@ -10,7 +10,7 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "lint:rules": "eslint firestore.rules",
-    "test": "tsx --test src/utils/morphology.test.ts src/utils/quizEngine.test.ts src/utils/storage.test.ts src/utils/quizStats.test.ts src/utils/irodori.test.ts firestore.rules.test.ts",
+    "test": "tsx --test src/utils/morphology.test.ts src/utils/quizEngine.test.ts src/utils/storage.test.ts src/utils/quizStats.test.ts src/utils/irodori.test.ts src/utils/irodoriKanjiFilter.test.ts firestore.rules.test.ts",
     "test:rules:emulator": "npx --yes firebase-tools emulators:exec --only firestore --project demo-n4-kanji-rules-test \"npx tsx --test firestore.emulator.test.ts\""
   },
   "dependencies": {

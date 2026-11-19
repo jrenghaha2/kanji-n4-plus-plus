@@ -5,13 +5,16 @@ import type {
   AppDatasetMode,
   IrodoriBookConfig,
   IrodoriChapterNumber,
+  IrodoriKanjiScope,
   QuizTypeChoice,
 } from '../../types/kanji';
+import { IRODORI_KANJI_SCOPE_META } from '../../utils/irodoriKanjiFilter';
 import { PRESET_COUNTS, QUIZ_TYPE_OPTIONS } from './quizHelpers';
 
 interface QuizSetupViewProps {
   datasetMode: AppDatasetMode;
   irodoriBook: IrodoriBookConfig;
+  irodoriKanjiScope?: IrodoriKanjiScope;
   selectedChapters: IrodoriChapterNumber[];
   chapterCounts: Record<IrodoriChapterNumber, number>;
   quizTypeChoice: QuizTypeChoice;
@@ -36,6 +39,7 @@ interface QuizSetupViewProps {
 export function QuizSetupView({
   datasetMode,
   irodoriBook,
+  irodoriKanjiScope = 'all',
   selectedChapters,
   chapterCounts,
   quizTypeChoice,
@@ -81,11 +85,22 @@ export function QuizSetupView({
             className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/60 p-4 space-y-3"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-bold text-slate-900 dark:text-slate-100">Pilih Bab Materi Kuis</span>
                 <span className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 font-mono-num">
                   {selectedChapters.length}/{IRODORI_CHAPTER_NUMBERS.length} bab
                 </span>
+                {irodoriKanjiScope !== 'all' ? (
+                  <span
+                    className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[11px] font-bold whitespace-nowrap ${
+                      irodoriKanjiScope === 'advanced'
+                        ? 'border-violet-200 dark:border-violet-700/80 bg-violet-50 dark:bg-violet-950/80 text-violet-800 dark:text-violet-200'
+                        : 'border-teal-200 dark:border-teal-700/80 bg-teal-50 dark:bg-teal-950/80 text-teal-800 dark:text-teal-200'
+                    }`}
+                  >
+                    {IRODORI_KANJI_SCOPE_META[irodoriKanjiScope].label}
+                  </span>
+                ) : null}
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
                 <button
@@ -310,7 +325,9 @@ export function QuizSetupView({
             <p className="mt-2.5 text-xs font-medium text-amber-800 dark:text-amber-300">
               {datasetMode === 'irodori' && selectedChapters.length === 0
                 ? 'Pilih minimal 1 bab di atas untuk memulai kuis.'
-                : 'Belum ada data kosakata pada pilihan ini untuk dijadikan kuis.'}
+                : irodoriKanjiScope !== 'all'
+                  ? `Tidak ada soal untuk filter ${IRODORI_KANJI_SCOPE_META[irodoriKanjiScope].label} pada bab yang dipilih.`
+                  : 'Belum ada data kosakata pada pilihan ini untuk dijadikan kuis.'}
             </p>
           ) : disabledPresets.length > 0 ? (
             <p className="mt-2.5 text-xs font-medium text-amber-800 dark:text-amber-300">

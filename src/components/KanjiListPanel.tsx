@@ -8,9 +8,14 @@ import type {
   IrodoriBookConfig,
   IrodoriChapterFilter,
   IrodoriChapterNumber,
+  IrodoriKanjiScope,
   KanjiEntry,
   LevelFilter,
 } from '../types/kanji';
+import {
+  getOutsideWhitelistKanji,
+  matchesIrodoriKanjiScope,
+} from '../utils/irodoriKanjiFilter';
 import { speakJP } from '../utils/tts';
 
 interface KanjiListPanelProps {
@@ -18,6 +23,7 @@ interface KanjiListPanelProps {
   irodoriBook?: IrodoriBookConfig;
   levelFilter: LevelFilter;
   chapterFilter?: IrodoriChapterFilter;
+  irodoriKanjiScope?: IrodoriKanjiScope;
   mastered: Set<string>;
   hardSet: Set<string>;
 }
@@ -27,6 +33,7 @@ export function KanjiListPanel({
   irodoriBook = IRODORI_BOOKS.dasar1,
   levelFilter,
   chapterFilter = 'all',
+  irodoriKanjiScope = 'all',
   mastered,
   hardSet,
 }: KanjiListPanelProps) {
@@ -40,6 +47,7 @@ export function KanjiListPanel({
     return source.filter(it => {
       if (datasetMode === 'irodori') {
         if (chapterFilter !== 'all' && it.chapter !== chapterFilter) return false;
+        if (!matchesIrodoriKanjiScope(it, irodoriKanjiScope)) return false;
       } else {
         if (levelFilter !== 'all' && it.dif !== levelFilter) return false;
       }
@@ -56,7 +64,7 @@ export function KanjiListPanel({
         chapterLabel.includes(q)
       );
     });
-  }, [datasetMode, irodoriBook.data, levelFilter, chapterFilter, query]);
+  }, [datasetMode, irodoriBook.data, levelFilter, chapterFilter, irodoriKanjiScope, query]);
 
   const groupedByChapter = useMemo(() => {
     if (datasetMode !== 'irodori') return [];
@@ -88,6 +96,9 @@ export function KanjiListPanel({
     const isMastered = mastered.has(item.id);
     const isHard = hardSet.has(item.id);
     const isLongWord = item.k.length >= 5;
+    const outsideWhitelistKanji =
+      datasetMode === 'irodori' ? getOutsideWhitelistKanji(item) : [];
+    const isAdvancedKanji = outsideWhitelistKanji.length > 0;
 
     return (
       <div
@@ -142,6 +153,14 @@ export function KanjiListPanel({
                       Kanji: {item.kanjiList.join(' ')}
                     </span>
                   </>
+                ) : null}
+                {isAdvancedKanji ? (
+                  <span
+                    title={`Kanji di luar daftar acuan N4/JFT: ${outsideWhitelistKanji.join('、')}`}
+                    className="inline-flex items-center px-2 py-0.5 rounded-md border border-violet-200 dark:border-violet-700/80 bg-violet-50 dark:bg-violet-950/80 text-[11px] font-bold text-violet-800 dark:text-violet-200 whitespace-nowrap"
+                  >
+                    Kanji Lanjutan
+                  </span>
                 ) : null}
                 {isMastered ? (
                   <>
@@ -237,7 +256,9 @@ export function KanjiListPanel({
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-10 text-center text-sm font-medium text-slate-500 dark:text-slate-400">
           {query.trim()
             ? `Tidak ada hasil untuk “${query.trim()}”.`
-            : 'Belum ada data kosakata pada bab ini.'}
+            : irodoriKanjiScope !== 'all'
+              ? 'Tidak ada kosakata yang cocok untuk filter Kanji dan bab yang dipilih.'
+              : 'Belum ada data kosakata pada bab ini.'}
         </div>
       ) : datasetMode === 'irodori' ? (
         <div className="space-y-6" id="kanjiList">

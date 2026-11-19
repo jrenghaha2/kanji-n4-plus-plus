@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { KANJI, LEVELS } from '../data/kanjiData';
 import type { AppDatasetMode, KanjiEntry, LevelFilter } from '../types/kanji';
+import { getOutsideWhitelistKanji } from '../utils/irodoriKanjiFilter';
 import { speakJP } from '../utils/tts';
 
 interface FlashcardPanelProps {
@@ -101,6 +102,9 @@ export function FlashcardPanel({
   const progressPct = total === 0 || isDone ? 100 : (pos / total) * 100;
   const levelLabel = scopeLabel ?? LEVELS[levelFilter].label;
   const kLen = currentItem?.k.length ?? 0;
+  const outsideWhitelistKanji =
+    datasetMode === 'irodori' && currentItem ? getOutsideWhitelistKanji(currentItem) : [];
+  const isAdvancedKanji = outsideWhitelistKanji.length > 0;
 
   const confirmScopeLabel =
     datasetMode === 'irodori'
@@ -171,7 +175,7 @@ export function FlashcardPanel({
                   ? datasetMode === 'irodori'
                     ? 'Semua kosakata di pilihan ini sudah hafal.'
                     : 'Semua kanji di level ini sudah hafal.'
-                  : 'Belum ada data kosakata pada bab ini.'
+                  : 'Tidak ada kosakata yang cocok pada pilihan bab dan filter Kanji ini.'
               : `${total} kartu diulas · ${sessionNewMaster} hafal baru · ${sessionHardCount} ditandai sulit`}
           </p>
 
@@ -207,6 +211,14 @@ export function FlashcardPanel({
             >
               {/* Front Face */}
               <div className="backface-hidden absolute inset-0 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                {isAdvancedKanji ? (
+                  <span
+                    title={`Kanji di luar daftar acuan N4/JFT: ${outsideWhitelistKanji.join('、')}`}
+                    className="absolute top-3.5 left-3.5 z-10 pointer-events-none inline-flex items-center px-2.5 py-1 rounded-lg border border-violet-200 dark:border-violet-700/80 bg-violet-50 dark:bg-violet-950/80 text-violet-800 dark:text-violet-200 text-[11px] sm:text-xs font-bold whitespace-nowrap"
+                  >
+                    Kanji Lanjutan
+                  </span>
+                ) : null}
                 <button
                   type="button"
                   id="flashcardFlipFront"
@@ -246,6 +258,14 @@ export function FlashcardPanel({
 
               {/* Back Face */}
               <div className="backface-hidden rotate-y-180 absolute inset-0 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                {isAdvancedKanji ? (
+                  <span
+                    title={`Kanji di luar daftar acuan N4/JFT: ${outsideWhitelistKanji.join('、')}`}
+                    className="absolute top-3.5 left-3.5 z-10 pointer-events-none inline-flex items-center px-2.5 py-1 rounded-lg border border-violet-200 dark:border-violet-700/80 bg-violet-50 dark:bg-violet-950/80 text-violet-800 dark:text-violet-200 text-[11px] sm:text-xs font-bold whitespace-nowrap"
+                  >
+                    Kanji Lanjutan
+                  </span>
+                ) : null}
                 <button
                   type="button"
                   id="flashcardFlipBack"

@@ -9,8 +9,13 @@ import type {
   IrodoriBookConfig,
   IrodoriChapterFilter,
   IrodoriChapterNumber,
+  IrodoriKanjiScope,
   LevelFilter,
 } from '../types/kanji';
+import {
+  IRODORI_KANJI_SCOPE_META,
+  matchesIrodoriKanjiScope,
+} from '../utils/irodoriKanjiFilter';
 
 interface SidebarProps {
   datasetMode: AppDatasetMode;
@@ -18,6 +23,7 @@ interface SidebarProps {
   activeTab: AppTab;
   levelFilter: LevelFilter;
   chapterFilter: IrodoriChapterFilter;
+  irodoriKanjiScope?: IrodoriKanjiScope;
   onSelectTab: (tab: AppTab) => void;
   onSelectLevel: (level: LevelFilter) => void;
   onSelectChapter: (chapter: IrodoriChapterFilter) => void;
@@ -29,6 +35,7 @@ export function Sidebar({
   activeTab,
   levelFilter,
   chapterFilter,
+  irodoriKanjiScope = 'all',
   onSelectTab,
   onSelectLevel,
   onSelectChapter,
@@ -44,16 +51,19 @@ export function Sidebar({
     []
   );
 
-  const chapterCounts = useMemo(() => {
+  const { chapterCounts, filteredIrodoriTotal } = useMemo(() => {
     const map = new Map<IrodoriChapterNumber, number>();
     for (const ch of IRODORI_CHAPTER_NUMBERS) map.set(ch, 0);
+    let total = 0;
     for (const it of irodoriBook.data) {
+      if (!matchesIrodoriKanjiScope(it, irodoriKanjiScope)) continue;
+      total++;
       if (it.chapter) {
         map.set(it.chapter, (map.get(it.chapter) ?? 0) + 1);
       }
     }
-    return map;
-  }, [irodoriBook.data]);
+    return { chapterCounts: map, filteredIrodoriTotal: total };
+  }, [irodoriBook.data, irodoriKanjiScope]);
 
   const topicGroups = useMemo(() => {
     const groups: { topicJp: string; topicId: string; chapters: IrodoriChapterNumber[] }[] = [];
@@ -184,7 +194,7 @@ export function Sidebar({
                 }}
                 className="w-full min-h-[42px] px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-500"
               >
-                <option value="all">Semua Bab (1–18 · {irodoriBook.data.length} kosakata)</option>
+                <option value="all">Semua Bab (1–18 · {filteredIrodoriTotal} kosakata)</option>
                 {IRODORI_CHAPTER_NUMBERS.map(ch => {
                   const meta = irodoriBook.chapters[ch];
                   return (
@@ -213,7 +223,7 @@ export function Sidebar({
                 }`}
               >
                 <span>Semua</span>
-                <span className="font-mono-num opacity-80">{irodoriBook.data.length}</span>
+                <span className="font-mono-num opacity-80">{filteredIrodoriTotal}</span>
               </button>
               {IRODORI_CHAPTER_NUMBERS.map(ch => {
                 const active = chapterFilter === ch;
@@ -261,7 +271,7 @@ export function Sidebar({
                   chapterFilter === 'all' ? 'text-slate-300 dark:text-teal-100' : 'text-slate-500 dark:text-slate-400'
                 }`}
               >
-                {irodoriBook.data.length}
+                {filteredIrodoriTotal}
               </span>
             </button>
 
@@ -340,8 +350,11 @@ export function Sidebar({
               </>
             ) : (
               <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                Menampilkan seluruh 18 bab {irodoriBook.label} ({irodoriBook.data.length} kosakata
-                &amp; kanji).
+                Menampilkan seluruh 18 bab {irodoriBook.label} ({filteredIrodoriTotal} kosakata
+                {irodoriKanjiScope !== 'all'
+                  ? ` · ${IRODORI_KANJI_SCOPE_META[irodoriKanjiScope].label}`
+                  : ' & kanji'}
+                ).
               </p>
             )}
             {irodoriBook.pdfPath ? (
