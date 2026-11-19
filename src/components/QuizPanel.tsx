@@ -3,10 +3,12 @@ import {
   BarChart3,
   CheckCircle2,
   HelpCircle,
+  History,
   RotateCcw,
   Trash2,
   TrendingDown,
   TrendingUp,
+  X,
   XCircle,
 } from 'lucide-react';
 import { IRODORI_BOOKS } from '../data/irodoriBooks';
@@ -37,6 +39,7 @@ import {
 } from '../utils/quizEngine';
 import {
   QUIZ_HISTORY_KEY,
+  buildQuizAnswerSnapshots,
   clearQuizHistory,
   computeQuizPerformanceStats,
   loadQuizHistory,
@@ -153,6 +156,8 @@ export function QuizPanel({
     loadQuizHistory(undefined, historyStorageKey)
   );
   const [confirmClearHistory, setConfirmClearHistory] = useState(false);
+  const [historyModalSessionId, setHistoryModalSessionId] = useState<string | null>(null);
+  const [historyAnswerFilter, setHistoryAnswerFilter] = useState<'all' | 'wrong' | 'right'>('all');
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const customInputRef = useRef<HTMLInputElement>(null);
@@ -172,7 +177,19 @@ export function QuizPanel({
   useEffect(() => {
     setQuizHistory(loadQuizHistory(undefined, historyStorageKey));
     setConfirmClearHistory(false);
+    setHistoryModalSessionId(null);
   }, [historyStorageKey]);
+
+  useEffect(() => {
+    if (!historyModalSessionId) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setHistoryModalSessionId(null);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [historyModalSessionId]);
 
   useEffect(() => {
     return () => {
@@ -207,6 +224,7 @@ export function QuizPanel({
     if (answered <= 0) return;
     sessionSavedRef.current = true;
     const { level, scopeLabel, mode, storageKey } = activeSessionMetaRef.current;
+    const answers = buildQuizAnswerSnapshots(rightList, wrongList);
     setQuizHistory(prev =>
       recordQuizSession(
         prev,
@@ -216,12 +234,13 @@ export function QuizPanel({
           mode,
           correct: rightList.length,
           total: answered,
+          answers,
         },
         undefined,
         storageKey
       )
     );
-  }, [stage, rightList.length, wrongList.length]);
+  }, [stage, rightList, wrongList]);
 
   const performanceStats = useMemo(
     () => computeQuizPerformanceStats(quizHistory),
@@ -343,6 +362,36 @@ export function QuizPanel({
   }, [stage, modalOpen, locked, questions, pos, handleAnswer]);
 
   const recentScores = quizHistory.slice(0, 6);
+  const activeHistorySession = useMemo(
+    () =>
+      historyModalSessionId
+        ? (quizHistory.find(entry => entry.id === historyModalSessionId) ?? quizHistory[0] ?? null)
+        : null,
+    [historyModalSessionId, quizHistory]
+  );
+
+  const openAnswerHistoryModal = useCallback((sessionId?: string) => {
+    const targetId = sessionId ?? quizHistory[0]?.id ?? null;
+    if (!targetId) return;
+    setHistoryAnswerFilter('all');
+    setHistoryModalSessionId(targetId);
+  }, [quizHistory]);
+
+  const activeSessionAnswers = activeHistorySession?.answers ?? [];
+  const filteredHistoryAnswers = useMemo(() => {
+    if (historyAnswerFilter === 'wrong') return activeSessionAnswers.filter(a => !a.correct);
+    if (historyAnswerFilter === 'right') return activeSessionAnswers.filter(a => a.correct);
+    return activeSessionAnswers;
+  }, [activeSessionAnswers, historyAnswerFilter]);
+
+  const activeSessionWrongCount = useMemo(
+    () => activeSessionAnswers.filter(a => !a.correct).length,
+    [activeSessionAnswers]
+  );
+  const activeSessionRightCount = useMemo(
+    () => activeSessionAnswers.filter(a => a.correct).length,
+    [activeSessionAnswers]
+  );
 
   const performancePanel = (
     <div
@@ -356,38 +405,51 @@ export function QuizPanel({
         </h3>
 
         {quizHistory.length > 0 ? (
-          confirmClearHistory ? (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                id="btnConfirmClearQuizStats"
-                onClick={() => {
-                  setQuizHistory(clearQuizHistory(undefined, historyStorageKey));
-                  setConfirmClearHistory(false);
-                }}
-                className="min-h-[32px] px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer"
-              >
-                Ya, Hapus
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirmClearHistory(false)}
-                className="min-h-[32px] px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-xs font-semibold cursor-pointer"
-              >
-                Batal
-              </button>
-            </div>
-          ) : (
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              id="btnClearQuizStats"
-              onClick={() => setConfirmClearHistory(true)}
-              className="min-h-[32px] px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-slate-500 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+              id="btnOpenQuizAnswerHistory"
+              onClick={() => openAnswerHistoryModal()}
+              className="min-h-[32px] px-3 py-1 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-600"
             >
-              <Trash2 className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-              <span>Hapus Riwayat</span>
+              <History className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+              <span>Riwayat Jawaban</span>
             </button>
-          )
+
+            {confirmClearHistory ? (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  id="btnConfirmClearQuizStats"
+                  onClick={() => {
+                    setQuizHistory(clearQuizHistory(undefined, historyStorageKey));
+                    setConfirmClearHistory(false);
+                    setHistoryModalSessionId(null);
+                  }}
+                  className="min-h-[32px] px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer"
+                >
+                  Ya, Hapus
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmClearHistory(false)}
+                  className="min-h-[32px] px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-xs font-semibold cursor-pointer"
+                >
+                  Batal
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                id="btnClearQuizStats"
+                onClick={() => setConfirmClearHistory(true)}
+                className="min-h-[32px] px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-slate-500 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                <span>Hapus Riwayat</span>
+              </button>
+            )}
+          </div>
         ) : null}
       </div>
 
@@ -518,12 +580,12 @@ export function QuizPanel({
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-3 ml-auto shrink-0">
+                  <div className="flex items-center gap-2.5 ml-auto shrink-0">
                     <span className="text-xs text-slate-600 font-mono-num">
                       {entry.correct}/{entry.total}
                     </span>
                     <div
-                      className="w-20 h-1.5 rounded-full bg-slate-100 overflow-hidden"
+                      className="w-16 sm:w-20 h-1.5 rounded-full bg-slate-100 overflow-hidden"
                       aria-hidden="true"
                     >
                       <div
@@ -534,6 +596,14 @@ export function QuizPanel({
                     <span className={`font-bold font-mono-num w-10 text-right ${textColor}`}>
                       {entry.score}%
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => openAnswerHistoryModal(entry.id)}
+                      aria-label={`Lihat detail jawaban sesi ${entry.scopeLabel ?? LEVELS[entry.level].label} (${entry.score}%)`}
+                      className="min-h-[28px] px-2.5 py-1 rounded-lg border border-slate-200 bg-slate-50 hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-700 text-slate-600 text-xs font-semibold transition-colors cursor-pointer"
+                    >
+                      Detail
+                    </button>
                   </div>
                 </li>
               );
@@ -546,6 +616,218 @@ export function QuizPanel({
           dan riwayat skor Anda.
         </p>
       )}
+
+      {activeHistorySession ? (
+        <div
+          id="quizAnswerHistoryModal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="quizAnswerHistoryTitle"
+          onClick={e => {
+            if (e.target === e.currentTarget) setHistoryModalSessionId(null);
+          }}
+          className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-[1px] flex items-center justify-center p-3 sm:p-5"
+        >
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between gap-3">
+              <div>
+                <h4
+                  id="quizAnswerHistoryTitle"
+                  className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2"
+                >
+                  <History className="w-4 h-4 text-indigo-600 shrink-0" aria-hidden="true" />
+                  <span>Riwayat Jawaban Kuis</span>
+                </h4>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {datasetMode === 'irodori' ? irodoriBook.label : 'JLPT N4 Kanji'} ·{' '}
+                  {quizHistory.length} sesi tersimpan
+                </p>
+              </div>
+              <button
+                type="button"
+                id="btnCloseQuizAnswerHistory"
+                onClick={() => setHistoryModalSessionId(null)}
+                aria-label="Tutup riwayat jawaban"
+                className="min-h-[36px] min-w-[36px] rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 inline-flex items-center justify-center cursor-pointer"
+              >
+                <X className="w-4 h-4" aria-hidden="true" />
+              </button>
+            </div>
+
+            {quizHistory.length > 1 ? (
+              <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/70">
+                <label
+                  htmlFor="quizHistorySessionSelect"
+                  className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5"
+                >
+                  Pilih Sesi Kuis
+                </label>
+                <select
+                  id="quizHistorySessionSelect"
+                  value={activeHistorySession.id}
+                  onChange={e => {
+                    setHistoryModalSessionId(e.target.value);
+                    setHistoryAnswerFilter('all');
+                  }}
+                  className="w-full min-h-[38px] px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs sm:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  {quizHistory.map((entry, idx) => (
+                    <option key={entry.id} value={entry.id}>
+                      Sesi #{quizHistory.length - idx} · {MODE_SHORT_LABEL[entry.mode]} ·{' '}
+                      {entry.scopeLabel ?? `Level ${LEVELS[entry.level].label}`} · {entry.correct}/
+                      {entry.total} ({entry.score}%) · {formatQuizTimestamp(entry.completedAt)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+
+            <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs sm:text-sm text-slate-700">
+                <strong className="font-jp text-slate-900">
+                  {MODE_SHORT_LABEL[activeHistorySession.mode]}
+                </strong>{' '}
+                · {activeHistorySession.scopeLabel ?? `Level ${LEVELS[activeHistorySession.level].label}`}{' '}
+                ·{' '}
+                <strong className="font-mono-num text-indigo-700">
+                  {activeHistorySession.score}%
+                </strong>{' '}
+                <span className="text-slate-500 font-mono-num">
+                  ({activeHistorySession.correct}/{activeHistorySession.total} benar)
+                </span>
+              </div>
+
+              {activeSessionAnswers.length > 0 ? (
+                <div className="flex items-center gap-1.5" role="group" aria-label="Filter jawaban">
+                  <button
+                    type="button"
+                    onClick={() => setHistoryAnswerFilter('all')}
+                    aria-pressed={historyAnswerFilter === 'all'}
+                    className={`min-h-[30px] px-2.5 py-1 rounded-lg border text-xs font-semibold cursor-pointer ${
+                      historyAnswerFilter === 'all'
+                        ? 'bg-indigo-600 border-indigo-600 text-white'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    Semua ({activeSessionAnswers.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHistoryAnswerFilter('wrong')}
+                    aria-pressed={historyAnswerFilter === 'wrong'}
+                    className={`min-h-[30px] px-2.5 py-1 rounded-lg border text-xs font-semibold cursor-pointer ${
+                      historyAnswerFilter === 'wrong'
+                        ? 'bg-rose-600 border-rose-600 text-white'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-rose-50 hover:text-rose-700'
+                    }`}
+                  >
+                    Salah ({activeSessionWrongCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHistoryAnswerFilter('right')}
+                    aria-pressed={historyAnswerFilter === 'right'}
+                    className={`min-h-[30px] px-2.5 py-1 rounded-lg border text-xs font-semibold cursor-pointer ${
+                      historyAnswerFilter === 'right'
+                        ? 'bg-emerald-600 border-emerald-600 text-white'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-emerald-50 hover:text-emerald-700'
+                    }`}
+                  >
+                    Benar ({activeSessionRightCount})
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="p-5 overflow-y-auto space-y-2.5 flex-1" id="quizAnswerHistoryList">
+              {activeSessionAnswers.length === 0 ? (
+                <p className="text-sm text-slate-500 leading-relaxed text-center py-8">
+                  Detail jawaban per soal belum tersimpan untuk sesi lama ini. Selesaikan sesi kuis
+                  baru untuk melihat riwayat jawaban lengkap.
+                </p>
+              ) : filteredHistoryAnswers.length === 0 ? (
+                <p className="text-sm text-slate-500 leading-relaxed text-center py-8">
+                  {historyAnswerFilter === 'wrong'
+                    ? 'Tidak ada jawaban salah pada sesi ini. Sempurna!'
+                    : 'Tidak ada jawaban benar pada filter ini.'}
+                </p>
+              ) : (
+                filteredHistoryAnswers.map(ans => {
+                  const showReading = ans.itemR && ans.itemR !== ans.itemK;
+                  return (
+                    <div
+                      key={`${activeHistorySession.id}-${ans.no}`}
+                      className={`rounded-xl border p-3.5 text-sm leading-relaxed ${
+                        ans.correct
+                          ? 'border-emerald-200 bg-emerald-50/40'
+                          : 'border-rose-200 bg-rose-50/40'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2 text-xs font-semibold">
+                        <span className="text-slate-500">
+                          No. {ans.no} · {getQuizModelLabel(ans.type, datasetMode)}
+                        </span>
+                        <span
+                          className={
+                            ans.correct
+                              ? 'text-emerald-700 inline-flex items-center gap-1'
+                              : 'text-rose-700 inline-flex items-center gap-1'
+                          }
+                        >
+                          {ans.correct ? (
+                            <>
+                              <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
+                              <span>Benar</span>
+                            </>
+                          ) : (
+                            <>
+                              <XCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                              <span>Salah</span>
+                            </>
+                          )}
+                        </span>
+                      </div>
+
+                      {ans.type === 'ex2k' && ans.ex ? (
+                        <div className="mt-1 space-y-1">
+                          <p className="font-jp font-semibold text-slate-900">{ans.ex}</p>
+                          <p className="text-xs sm:text-sm text-slate-700">
+                            Benar:{' '}
+                            <strong className="text-emerald-700 font-jp">{ans.expectedLabel}</strong>{' '}
+                            ({ans.itemR}, {ans.itemM})
+                            {!ans.correct ? (
+                              <>
+                                {' '}
+                                · Jawabanmu:{' '}
+                                <strong className="text-rose-700 font-jp">{ans.chosenLabel}</strong>
+                                {ans.chosenM ? ` (${ans.chosenM})` : ''}
+                              </>
+                            ) : null}
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="mt-1 text-slate-800">
+                          <strong className="font-jp text-base">{ans.itemK}</strong>
+                          {showReading ? ` (${ans.itemR})` : ''} —{' '}
+                          <span className="text-emerald-700 font-semibold">{ans.itemM}</span>
+                          {!ans.correct ? (
+                            <>
+                              {' '}
+                              · Jawabanmu:{' '}
+                              <span className="text-rose-700 font-semibold">{ans.chosenLabel}</span>
+                              {ans.type !== 'k2m' && ans.chosenM ? ` (${ans.chosenM})` : ''}
+                            </>
+                          ) : null}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 

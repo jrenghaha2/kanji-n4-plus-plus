@@ -184,6 +184,20 @@ export interface ToastMessage {
   detail?: string;
 }
 
+export interface QuizAnswerSnapshot {
+  no: number;
+  type: QuizModelKey;
+  correct: boolean;
+  itemId: string;
+  itemK: string;
+  itemR: string;
+  itemM: string;
+  expectedLabel: string;
+  chosenLabel: string;
+  chosenM?: string;
+  ex?: string;
+}
+
 export interface QuizSessionHistoryEntry {
   id: string;
   completedAt: string;
@@ -193,4 +207,5 @@ export interface QuizSessionHistoryEntry {
   correct: number;
   total: number;
   score: number;
+  answers?: QuizAnswerSnapshot[];
 }

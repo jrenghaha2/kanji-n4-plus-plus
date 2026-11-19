@@ -8,7 +8,7 @@ Aplikasi belajar bahasa Jepang berbasis React + TypeScript + Tailwind CSS + Fire
   - Pembagian level *Easy* (210), *Medium* (200), dan *Hard* (90).
   - Flashcard interaktif (pintasan keyboard `Spasi`, `←/→`, `H`, `S`, `A`), mode kartu sulit, acak, dan sembunyikan hafal.
   - Daftar kosakata lengkap dengan pencarian, filter level/status, dan pelafalan audio Jepang (Web Speech API).
-  - Kuis ABC 5 model (hingga 2.500 variasi soal dengan analisis morfologi & anti-ambiguitas jawaban ganda).
+  - Kuis ABC 5 model (hingga 2.500 variasi soal dengan analisis morfologi, anti-ambiguitas sinonim, statistik performa, & riwayat jawaban per sesi).
 - **Seri Buku JF Irodori (100% Utuh, Bab 1–18)**
   - **Irodori Pemula (A1)**: 1.136 kosakata (`いろどり 入門`).
   - **Irodori Dasar 1 (A2)**: 1.067 kosakata (`いろどり 初級1`).
