@@ -83,6 +83,40 @@
         }
       },
       "required": ["uid", "bookId", "mastered", "hard", "createdAt", "updatedAt"]
+    },
+    "QuizHistoryBucket": {
+      "title": "QuizHistoryBucket",
+      "description": "Riwayat sesi dan jawaban kuis terkompresi berbasis referensi ID per dataset (n4, pemula, dasar1, dasar2) milik pengguna terautentikasi.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID pemilik riwayat kuis."
+        },
+        "datasetId": {
+          "type": "string",
+          "enum": ["n4", "pemula", "dasar1", "dasar2"],
+          "description": "Identitas dataset kuis (n4, pemula, dasar1, atau dasar2)."
+        },
+        "sessions": {
+          "type": "array",
+          "description": "Daftar maksimal 15 token sesi kuis unik berbasis referensi ID (total panjang gabungan <= 160000 karakter, semua elemen divalidasi dengan pola token ASCII ketat tanpa teks bebas)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp pembuatan dokumen di server Firestore."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp pembaruan terakhir dokumen di server Firestore."
+        }
+      },
+      "required": ["uid", "datasetId", "sessions", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
@@ -97,6 +131,12 @@
         "$ref": "#/entities/IrodoriBookProgress"
       },
       "description": "Dokumen progres kosakata Irodori per buku (pemula, dasar1, dasar2) milik pengguna terautentikasi, diisolasi per userId dan bookId."
+    },
+    "/users/{userId}/quizHistory/{datasetId}": {
+      "schema": {
+        "$ref": "#/entities/QuizHistoryBucket"
+      },
+      "description": "Dokumen riwayat kuis dan snapshot jawaban berbasis referensi ID (maksimal 15 sesi) per dataset (n4, pemula, dasar1, dasar2) milik pengguna terautentikasi."
     }
   }
 }

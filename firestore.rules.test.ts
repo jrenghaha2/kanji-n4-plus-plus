@@ -26,6 +26,21 @@ import {
   sanitizeProgressLists,
 } from './src/utils/progressSync';
 import {
+  MAX_CLOUD_QUIZ_JOINED_LENGTH,
+  MAX_CLOUD_QUIZ_SESSIONS,
+  MAX_CLOUD_QUIZ_SESSION_TOKEN_LENGTH,
+  QUIZ_SESSION_COMMA_JOINED_PATTERN,
+  QUIZ_SESSION_TILDE_JOINED_PATTERN,
+  QUIZ_SESSION_TOKEN_PATTERN,
+  isValidQuizDatasetId,
+} from './src/utils/quizHistorySync';
+import {
+  IRODORI_DASAR2_QUIZ_HISTORY_KEY,
+  IRODORI_PEMULA_QUIZ_HISTORY_KEY,
+  IRODORI_QUIZ_HISTORY_KEY,
+  QUIZ_HISTORY_KEY,
+} from './src/utils/quizStats';
+import {
   HARD_KEY,
   IRODORI_DASAR2_HARD_KEY,
   IRODORI_DASAR2_LS_KEY,
@@ -233,6 +248,17 @@ test('firestore.rules file implements all Eight Pillars gates and matches fireba
   assert.ok(rulesText.includes('isValidIrodoriDasar1List(arr)'));
   assert.ok(rulesText.includes('isValidIrodoriDasar2List(arr)'));
   assert.ok(rulesText.includes('isValidIrodoriProgress(incoming(), bookId)'));
+  assert.ok(
+    Object.prototype.hasOwnProperty.call(
+      blueprint.firestore,
+      '/users/{userId}/quizHistory/{datasetId}'
+    )
+  );
+  assert.ok(rulesText.includes('match /quizHistory/{datasetId}'));
+  assert.ok(rulesText.includes('isValidQuizDatasetId(datasetId)'));
+  assert.ok(rulesText.includes('isValidQuizHistorySessions(data.sessions)'));
+  assert.ok(rulesText.includes('isValidQuizHistoryBucket(incoming(), datasetId)'));
+  assert.ok(rulesText.includes("arr.join('~').matches("));
   assert.ok(rulesText.includes('exists(/databases/$(database)/documents/users/$(userId))'));
 });
 
@@ -778,7 +804,7 @@ test('Irodori progressSync helpers sanitize, build payloads, merge, and clear st
   assert.deepEqual([...merged.hard], ['ir5']);
   assert.equal(merged.addedFromSecondary, 3);
 
-  // Verify clearStoredProgress clears both N4 and all 3 Irodori books on sign-out
+  // Verify clearStoredProgress clears N4, all 3 Irodori books, and all 4 quiz histories on sign-out
   const mem = new Map<string, string>([
     [LS_KEY, '["n1"]'],
     [HARD_KEY, '["n2"]'],
@@ -788,6 +814,10 @@ test('Irodori progressSync helpers sanitize, build payloads, merge, and clear st
     [IRODORI_HARD_KEY, '["ir2"]'],
     [IRODORI_DASAR2_LS_KEY, '["ir2_1"]'],
     [IRODORI_DASAR2_HARD_KEY, '["ir2_2"]'],
+    [QUIZ_HISTORY_KEY, '[]'],
+    [IRODORI_PEMULA_QUIZ_HISTORY_KEY, '[]'],
+    [IRODORI_QUIZ_HISTORY_KEY, '[]'],
+    [IRODORI_DASAR2_QUIZ_HISTORY_KEY, '[]'],
     [OWNER_UID_KEY, 'user_01'],
   ]);
   const mockStorage: StorageLike = {
@@ -801,4 +831,258 @@ test('Irodori progressSync helpers sanitize, build payloads, merge, and clear st
   };
   clearStoredProgress(mockStorage);
   assert.equal(mem.size, 0);
+});
+
+interface MockQuizHistoryDoc {
+  uid?: unknown;
+  datasetId?: unknown;
+  sessions?: unknown;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+  [extra: string]: unknown;
+}
+
+function simulateQuizHistoryRulesDecision(
+  op: 'get' | 'list' | 'create' | 'update' | 'delete',
+  auth: MockAuth | null,
+  pathUserId: string,
+  pathDatasetId: string,
+  parentUserDocExists: boolean,
+  incoming?: MockQuizHistoryDoc,
+  existing?: MockQuizHistoryDoc
+): 'ALLOW' | 'PERMISSION_DENIED' {
+  const isSignedIn = auth !== null;
+  const isVerifiedUser = isSignedIn && auth.token.email_verified === true;
+  const isValidId = (id: unknown): id is string =>
+    typeof id === 'string' && id.length >= 1 && id.length <= UID_MAX_LENGTH && UID_PATTERN.test(id);
+  const isOwner = isSignedIn && auth.uid === pathUserId;
+
+  if (op === 'list') return 'PERMISSION_DENIED';
+  if (!isValidId(pathUserId) || !isValidQuizDatasetId(pathDatasetId)) {
+    return 'PERMISSION_DENIED';
+  }
+  if (op === 'get') {
+    return isSignedIn && isOwner && parentUserDocExists ? 'ALLOW' : 'PERMISSION_DENIED';
+  }
+  if (op === 'delete') {
+    return isVerifiedUser && isOwner && parentUserDocExists ? 'ALLOW' : 'PERMISSION_DENIED';
+  }
+  if (!incoming || !isVerifiedUser || !isOwner || !parentUserDocExists) {
+    return 'PERMISSION_DENIED';
+  }
+
+  const requiredKeys = new Set(['uid', 'datasetId', 'sessions', 'createdAt', 'updatedAt']);
+  const keys = Object.keys(incoming);
+  if (keys.length !== requiredKeys.size || !keys.every(k => requiredKeys.has(k))) {
+    return 'PERMISSION_DENIED';
+  }
+  if (
+    !isValidId(incoming.uid) ||
+    incoming.uid !== auth.uid ||
+    !isValidQuizDatasetId(incoming.datasetId) ||
+    incoming.datasetId !== pathDatasetId
+  ) {
+    return 'PERMISSION_DENIED';
+  }
+
+  const checkSessions = (arr: unknown): arr is string[] => {
+    if (!Array.isArray(arr) || arr.length > MAX_CLOUD_QUIZ_SESSIONS) return false;
+    if (new Set(arr).size !== arr.length) return false;
+    if (arr.length === 0) return true;
+    if (!arr.every(el => typeof el === 'string')) return false;
+    const first = arr[0];
+    if (
+      first.length < 25 ||
+      first.length > MAX_CLOUD_QUIZ_SESSION_TOKEN_LENGTH ||
+      !QUIZ_SESSION_TOKEN_PATTERN.test(first)
+    ) {
+      return false;
+    }
+    const commaJoined = arr.join(',');
+    const tildeJoined = arr.join('~');
+    return (
+      commaJoined.length <= MAX_CLOUD_QUIZ_JOINED_LENGTH &&
+      QUIZ_SESSION_COMMA_JOINED_PATTERN.test(commaJoined) &&
+      QUIZ_SESSION_TILDE_JOINED_PATTERN.test(tildeJoined)
+    );
+  };
+
+  if (!checkSessions(incoming.sessions)) {
+    return 'PERMISSION_DENIED';
+  }
+
+  if (op === 'create') {
+    return incoming.uid === pathUserId &&
+      incoming.createdAt === SERVER_TIME &&
+      incoming.updatedAt === SERVER_TIME
+      ? 'ALLOW'
+      : 'PERMISSION_DENIED';
+  }
+
+  if (!existing) return 'PERMISSION_DENIED';
+  const changedKeys = keys.filter(k => incoming[k] !== existing[k]);
+  const allowedUpdateKeys = new Set(['sessions', 'updatedAt']);
+  if (
+    !changedKeys.every(k => allowedUpdateKeys.has(k)) ||
+    incoming.uid !== existing.uid ||
+    incoming.datasetId !== existing.datasetId ||
+    incoming.createdAt !== existing.createdAt ||
+    incoming.updatedAt !== SERVER_TIME
+  ) {
+    return 'PERMISSION_DENIED';
+  }
+  return 'ALLOW';
+}
+
+test('QuizHistory subcollection rules enforce Master Gate, full-array token validation, and isolation', () => {
+  const userA: MockAuth = { uid: 'userA_123', token: { email_verified: true } };
+  const userB: MockAuth = { uid: 'userB_456', token: { email_verified: true } };
+  const unverifiedA: MockAuth = { uid: 'userA_123', token: { email_verified: false } };
+
+  const validToken1 = 'q-1|2026-11-18T12:00:00.000Z|all|random|8|10|80||1:5:n1;2:1:n2:n3';
+  const validToken2 = 'q-2|2026-11-18T13:00:00.000Z|all|k2m|9|10|90|1.2.5|1:6:ir1;2:1:ir2:ir3';
+
+  const validDoc: MockQuizHistoryDoc = {
+    uid: 'userA_123',
+    datasetId: 'n4',
+    sessions: [validToken1],
+    createdAt: SERVER_TIME,
+    updatedAt: SERVER_TIME,
+  };
+
+  // Master Gate: missing parent /users/{uid} MUST deny
+  assert.equal(
+    simulateQuizHistoryRulesDecision('create', userA, 'userA_123', 'n4', false, validDoc),
+    'PERMISSION_DENIED'
+  );
+  assert.equal(
+    simulateQuizHistoryRulesDecision('get', userA, 'userA_123', 'n4', false),
+    'PERMISSION_DENIED'
+  );
+
+  // Unauth / unverified / cross-user / list / invalid datasetId MUST deny
+  assert.equal(
+    simulateQuizHistoryRulesDecision('get', null, 'userA_123', 'n4', true),
+    'PERMISSION_DENIED'
+  );
+  assert.equal(
+    simulateQuizHistoryRulesDecision('create', unverifiedA, 'userA_123', 'n4', true, validDoc),
+    'PERMISSION_DENIED'
+  );
+  assert.equal(
+    simulateQuizHistoryRulesDecision('get', userB, 'userA_123', 'n4', true),
+    'PERMISSION_DENIED'
+  );
+  assert.equal(
+    simulateQuizHistoryRulesDecision('list', userA, 'userA_123', 'n4', true),
+    'PERMISSION_DENIED'
+  );
+  assert.equal(
+    simulateQuizHistoryRulesDecision('create', userA, 'userA_123', 'dasar3', true, {
+      ...validDoc,
+      datasetId: 'dasar3',
+    }),
+    'PERMISSION_DENIED'
+  );
+
+  // Full-array XSS, comma/tilde smuggling, >15 sessions, duplicate sessions, bad score MUST deny
+  assert.equal(
+    simulateQuizHistoryRulesDecision('create', userA, 'userA_123', 'n4', true, {
+      ...validDoc,
+      sessions: [validToken1, '<script>alert(1)</script>'],
+    }),
+    'PERMISSION_DENIED'
+  );
+  assert.equal(
+    simulateQuizHistoryRulesDecision('create', userA, 'userA_123', 'n4', true, {
+      ...validDoc,
+      sessions: [validToken1, `${validToken2},${validToken2}`], // comma smuggling
+    }),
+    'PERMISSION_DENIED'
+  );
+  assert.equal(
+    simulateQuizHistoryRulesDecision('create', userA, 'userA_123', 'n4', true, {
+      ...validDoc,
+      sessions: [validToken1, `${validToken2}~${validToken2}`], // tilde smuggling
+    }),
+    'PERMISSION_DENIED'
+  );
+  assert.equal(
+    simulateQuizHistoryRulesDecision('create', userA, 'userA_123', 'n4', true, {
+      ...validDoc,
+      sessions: [validToken1, 'q-bad|2026-11-18T12:00:00.000Z|all|k2r|10|10|101||'], // score > 100
+    }),
+    'PERMISSION_DENIED'
+  );
+  assert.equal(
+    simulateQuizHistoryRulesDecision('create', userA, 'userA_123', 'n4', true, {
+      ...validDoc,
+      sessions: [validToken1, validToken1], // duplicate
+    }),
+    'PERMISSION_DENIED'
+  );
+  assert.equal(
+    simulateQuizHistoryRulesDecision('create', userA, 'userA_123', 'n4', true, {
+      ...validDoc,
+      sessions: Array.from(
+        { length: 16 },
+        (_, i) => `q-${i}|2026-11-18T12:00:00.000Z|all|k2r|1|1|100||1:5:n1`
+      ),
+    }),
+    'PERMISSION_DENIED'
+  );
+  assert.equal(
+    simulateQuizHistoryRulesDecision('create', userA, 'userA_123', 'n4', true, {
+      ...validDoc,
+      isAdmin: true, // shadow field
+    }),
+    'PERMISSION_DENIED'
+  );
+
+  // Legitimate create, update, clear (empty sessions), get, delete MUST succeed
+  assert.equal(
+    simulateQuizHistoryRulesDecision('create', userA, 'userA_123', 'n4', true, validDoc),
+    'ALLOW'
+  );
+  assert.equal(
+    simulateQuizHistoryRulesDecision('get', userA, 'userA_123', 'n4', true),
+    'ALLOW'
+  );
+  assert.equal(
+    simulateQuizHistoryRulesDecision(
+      'update',
+      userA,
+      'userA_123',
+      'n4',
+      true,
+      { ...validDoc, sessions: [validToken2, validToken1] },
+      validDoc
+    ),
+    'ALLOW'
+  );
+  assert.equal(
+    simulateQuizHistoryRulesDecision(
+      'update',
+      userA,
+      'userA_123',
+      'n4',
+      true,
+      { ...validDoc, sessions: [] },
+      validDoc
+    ),
+    'ALLOW'
+  );
+  // Attempting to mutate immutable datasetId MUST deny
+  assert.equal(
+    simulateQuizHistoryRulesDecision(
+      'update',
+      userA,
+      'userA_123',
+      'n4',
+      true,
+      { ...validDoc, datasetId: 'pemula' },
+      validDoc
+    ),
+    'PERMISSION_DENIED'
+  );
 });

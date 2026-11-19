@@ -250,6 +250,54 @@ test(
         deleteDoc(doc(userADb, 'users', 'userA_123', 'irodoriProgress', 'dasar2'))
       );
 
+      // 7. QuizHistory subcollection /users/{uid}/quizHistory/{datasetId} rules
+      const validQuizToken1 = 'q-1|2026-11-18T12:00:00.000Z|all|random|8|10|80||1:5:n1;2:1:n2:n3';
+      const validQuizToken2 = 'q-2|2026-11-18T13:00:00.000Z|all|k2m|9|10|90|1.2.5|1:6:ir1;2:1:ir2:ir3';
+
+      await assertFails(getDocs(collection(userADb, 'users', 'userA_123', 'quizHistory')));
+      await assertFails(
+        setDoc(doc(userADb, 'users', 'userA_123', 'quizHistory', 'n4'), {
+          uid: 'userA_123',
+          datasetId: 'n4',
+          sessions: [validQuizToken1, '<script>alert(1)</script>'],
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        })
+      );
+      await assertFails(
+        setDoc(doc(userADb, 'users', 'userA_123', 'quizHistory', 'n4'), {
+          uid: 'userA_123',
+          datasetId: 'n4',
+          sessions: [validQuizToken1, `${validQuizToken2},${validQuizToken2}`],
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        })
+      );
+      await assertSucceeds(
+        setDoc(doc(userADb, 'users', 'userA_123', 'quizHistory', 'n4'), {
+          uid: 'userA_123',
+          datasetId: 'n4',
+          sessions: [validQuizToken1],
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        })
+      );
+      await assertSucceeds(getDoc(doc(userADb, 'users', 'userA_123', 'quizHistory', 'n4')));
+      await assertFails(getDoc(doc(userBDb, 'users', 'userA_123', 'quizHistory', 'n4')));
+      await assertSucceeds(
+        updateDoc(doc(userADb, 'users', 'userA_123', 'quizHistory', 'n4'), {
+          sessions: [validQuizToken2, validQuizToken1],
+          updatedAt: serverTimestamp(),
+        })
+      );
+      await assertSucceeds(
+        updateDoc(doc(userADb, 'users', 'userA_123', 'quizHistory', 'n4'), {
+          sessions: [],
+          updatedAt: serverTimestamp(),
+        })
+      );
+      await assertSucceeds(deleteDoc(doc(userADb, 'users', 'userA_123', 'quizHistory', 'n4')));
+
       await assertFails(deleteDoc(doc(userBDb, 'users', 'userA_123')));
       await assertSucceeds(deleteDoc(doc(userADb, 'users', 'userA_123')));
     } finally {

@@ -18,7 +18,7 @@ import { IrodoriBookMenu } from './components/IrodoriBookMenu';
 import { IrodoriEmptyState } from './components/IrodoriEmptyState';
 import { KanjiListPanel } from './components/KanjiListPanel';
 import { ProfileModal } from './components/ProfileModal';
-import { QuizPanel } from './components/QuizPanel';
+import { QuizPanel, type RecordQuizSessionInput } from './components/QuizPanel';
 import { RestoreModal, type PendingRestoreState } from './components/RestoreModal';
 import { Sidebar } from './components/Sidebar';
 import { ToastBanner } from './components/ToastBanner';
@@ -42,6 +42,8 @@ import type {
   IrodoriChapterFilter,
   KanjiEntry,
   LevelFilter,
+  QuizDatasetId,
+  QuizSessionHistoryEntry,
   ToastMessage,
 } from './types/kanji';
 import {
@@ -59,6 +61,20 @@ import {
   sanitizeProgressLists,
 } from './utils/progressSync';
 import { getPoolIndices, shuffled } from './utils/quizEngine';
+import {
+  QUIZ_DATASET_IDS,
+  areQuizHistoriesEqual,
+  buildQuizHistoryWriteData,
+  decodeQuizHistoryFromCloud,
+  mergeQuizHistories,
+} from './utils/quizHistorySync';
+import {
+  QUIZ_HISTORY_KEYS_BY_DATASET,
+  clearQuizHistory,
+  loadQuizHistory,
+  recordQuizSession,
+  saveQuizHistory,
+} from './utils/quizStats';
 import {
   HARD_KEY,
   LS_KEY,
@@ -189,6 +205,17 @@ export default function App() {
     return initial;
   });
 
+  const [quizHistories, setQuizHistories] = useState<
+    Record<QuizDatasetId, QuizSessionHistoryEntry[]>
+  >(() => ({
+    n4: loadQuizHistory(undefined, QUIZ_HISTORY_KEYS_BY_DATASET.n4),
+    pemula: loadQuizHistory(undefined, QUIZ_HISTORY_KEYS_BY_DATASET.pemula),
+    dasar1: loadQuizHistory(undefined, QUIZ_HISTORY_KEYS_BY_DATASET.dasar1),
+    dasar2: loadQuizHistory(undefined, QUIZ_HISTORY_KEYS_BY_DATASET.dasar2),
+  }));
+  const [cloudReadyUid, setCloudReadyUid] = useState<string | null>(null);
+  const [quizHistorySyncing, setQuizHistorySyncing] = useState(false);
+
   const [user, setUser] = useState<User | null>(null);
   const [authVersion, setAuthVersion] = useState(0);
   const [authReady, setAuthReady] = useState(false);
@@ -232,6 +259,8 @@ export default function App() {
   hardRef.current = hardSet;
   const irodoriProgressRef = useRef(irodoriProgress);
   irodoriProgressRef.current = irodoriProgress;
+  const quizHistoriesRef = useRef(quizHistories);
+  quizHistoriesRef.current = quizHistories;
   const customNameRef = useRef(customDisplayName);
   customNameRef.current = customDisplayName;
   const customAvatarRef = useRef(customAvatarUrl);
@@ -242,6 +271,25 @@ export default function App() {
     dasar1: false,
     dasar2: false,
   });
+  const quizHistoryCloudExistsRef = useRef<Record<QuizDatasetId, boolean>>({
+    n4: false,
+    pemula: false,
+    dasar1: false,
+    dasar2: false,
+  });
+  const quizHistoryLoadedRef = useRef<Record<QuizDatasetId, boolean>>({
+    n4: false,
+    pemula: false,
+    dasar1: false,
+    dasar2: false,
+  });
+  const quizHistoryLoadingRef = useRef<Record<QuizDatasetId, boolean>>({
+    n4: false,
+    pemula: false,
+    dasar1: false,
+    dasar2: false,
+  });
+  const quizHistoryCanMergeLocalRef = useRef(true);
   const justSignedInRef = useRef(false);
 
   if (fatalError) {
@@ -301,6 +349,9 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, currentUser => {
       setUser(currentUser);
+      if (currentUser) {
+        setPendingRestore(null);
+      }
       setAuthVersion(v => v + 1);
       setAuthReady(true);
     });
@@ -312,6 +363,11 @@ export default function App() {
     if (!authReady || !user) {
       cloudDocExistsRef.current = false;
       irodoriCloudDocExistsRef.current = { pemula: false, dasar1: false, dasar2: false };
+      quizHistoryCloudExistsRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
+      quizHistoryLoadedRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
+      quizHistoryLoadingRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
+      quizHistoryCanMergeLocalRef.current = true;
+      setCloudReadyUid(null);
       setCustomDisplayName('');
       setCustomAvatarUrl('');
       setSyncing(false);
@@ -322,6 +378,10 @@ export default function App() {
     if (!user.emailVerified) {
       cloudDocExistsRef.current = false;
       irodoriCloudDocExistsRef.current = { pemula: false, dasar1: false, dasar2: false };
+      quizHistoryCloudExistsRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
+      quizHistoryLoadedRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
+      quizHistoryLoadingRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
+      setCloudReadyUid(null);
       setStoredOwnerUid(uid);
       setCustomDisplayName(sanitizeDisplayName(user.displayName));
       setCustomAvatarUrl(sanitizeAvatarUrl(user.photoURL));
@@ -334,6 +394,10 @@ export default function App() {
     const docPath = `users/${uid}`;
     const userDocRef = doc(db, 'users', uid);
 
+    quizHistoryCloudExistsRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
+    quizHistoryLoadedRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
+    quizHistoryLoadingRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
+
     const bootstrapCloudSync = async () => {
       setSyncing(true);
       try {
@@ -342,6 +406,13 @@ export default function App() {
 
         const storedOwner = getStoredOwnerUid();
         const canMergeLocal = storedOwner === null || storedOwner === uid;
+        quizHistoryCanMergeLocalRef.current = canMergeLocal;
+        if (!canMergeLocal) {
+          for (const dsId of QUIZ_DATASET_IDS) {
+            clearQuizHistory(undefined, QUIZ_HISTORY_KEYS_BY_DATASET[dsId]);
+          }
+          setQuizHistories({ n4: [], pemula: [], dasar1: [], dasar2: [] });
+        }
         const localM = canMergeLocal ? masteredRef.current : new Set<string>();
         const localH = canMergeLocal ? hardRef.current : new Set<string>();
 
@@ -595,6 +666,9 @@ export default function App() {
 
         if (cancelled) return;
 
+        // Parent /users/{uid} is now guaranteed to exist; enable lazy quizHistory sync on demand
+        setCloudReadyUid(uid);
+
         if (justSignedInRef.current) {
           const totalMastered = n4MasteredCount + totalIrodoriMastered;
           const totalHard = n4HardCount + totalIrodoriHard;
@@ -840,6 +914,156 @@ export default function App() {
       }
     },
     [reportFirestoreFailure, syncProgressToCloud]
+  );
+
+  const syncQuizHistoryWriteToCloud = useCallback(
+    async (
+      uid: string,
+      datasetId: QuizDatasetId,
+      entries: readonly QuizSessionHistoryEntry[]
+    ) => {
+      const currentUser = auth.currentUser;
+      if (!currentUser || currentUser.uid !== uid || !currentUser.emailVerified) return;
+
+      // Ensure parent /users/{uid} exists first (required by Firestore Master Gate rule)
+      if (!cloudDocExistsRef.current) {
+        await syncProgressToCloud(uid, masteredRef.current, hardRef.current);
+        if (!cloudDocExistsRef.current) return;
+      }
+
+      const payload = buildQuizHistoryWriteData(uid, datasetId, entries);
+      // Avoid creating an empty cloud document when user has zero history
+      if (!quizHistoryCloudExistsRef.current[datasetId] && payload.sessions.length === 0) {
+        return;
+      }
+
+      const docPath = `users/${uid}/quizHistory/${datasetId}`;
+      const historyDocRef = doc(db, 'users', uid, 'quizHistory', datasetId);
+      const op = quizHistoryCloudExistsRef.current[datasetId]
+        ? OperationType.UPDATE
+        : OperationType.CREATE;
+      try {
+        if (quizHistoryCloudExistsRef.current[datasetId]) {
+          await updateDoc(historyDocRef, {
+            sessions: payload.sessions,
+            updatedAt: serverTimestamp(),
+          });
+        } else {
+          await setDoc(historyDocRef, {
+            ...payload,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+          quizHistoryCloudExistsRef.current[datasetId] = true;
+        }
+      } catch (err) {
+        reportFirestoreFailure(err, op, docPath);
+      }
+    },
+    [reportFirestoreFailure, syncProgressToCloud]
+  );
+
+  // Lazy per-dataset quiz history fetch: 1 single getDoc per (uid, datasetId) session, zero reads if Kuis tab isn't opened
+  const fetchQuizHistoryForDataset = useCallback(
+    async (uid: string, datasetId: QuizDatasetId, forceRefresh = false) => {
+      const currentUser = auth.currentUser;
+      if (!currentUser || currentUser.uid !== uid || !currentUser.emailVerified) return;
+      if (!cloudDocExistsRef.current) return;
+      if (!forceRefresh && quizHistoryLoadedRef.current[datasetId]) return;
+      if (quizHistoryLoadingRef.current[datasetId]) return;
+
+      quizHistoryLoadingRef.current[datasetId] = true;
+      setQuizHistorySyncing(true);
+      const docPath = `users/${uid}/quizHistory/${datasetId}`;
+      const historyDocRef = doc(db, 'users', uid, 'quizHistory', datasetId);
+
+      try {
+        const snap = await getDoc(historyDocRef);
+        if (auth.currentUser?.uid !== uid) return;
+
+        const localEntries = quizHistoryCanMergeLocalRef.current
+          ? quizHistoriesRef.current[datasetId]
+          : [];
+
+        if (!snap.exists()) {
+          quizHistoryCloudExistsRef.current[datasetId] = false;
+          quizHistoryLoadedRef.current[datasetId] = true;
+          if (localEntries.length > 0) {
+            await syncQuizHistoryWriteToCloud(uid, datasetId, localEntries);
+          }
+          return;
+        }
+
+        quizHistoryCloudExistsRef.current[datasetId] = true;
+        const raw = snap.data() as { sessions?: unknown };
+        const cloudEntries = decodeQuizHistoryFromCloud(raw.sessions, datasetId);
+        const { merged, needsCloudWrite } = mergeQuizHistories(cloudEntries, localEntries);
+
+        if (!areQuizHistoriesEqual(merged, quizHistoriesRef.current[datasetId])) {
+          saveQuizHistory(merged, undefined, QUIZ_HISTORY_KEYS_BY_DATASET[datasetId]);
+          setQuizHistories(prev => ({ ...prev, [datasetId]: merged }));
+        }
+
+        quizHistoryLoadedRef.current[datasetId] = true;
+        if (needsCloudWrite) {
+          await syncQuizHistoryWriteToCloud(uid, datasetId, merged);
+        }
+      } catch (err) {
+        reportFirestoreFailure(err, OperationType.GET, docPath);
+      } finally {
+        quizHistoryLoadingRef.current[datasetId] = false;
+        setQuizHistorySyncing(false);
+      }
+    },
+    [reportFirestoreFailure, syncQuizHistoryWriteToCloud]
+  );
+
+  const activeQuizDatasetId: QuizDatasetId = datasetMode === 'irodori' ? irodoriBookId : 'n4';
+
+  // Lazily hydrate active dataset's quiz history ONLY when user opens the Quiz tab
+  useEffect(() => {
+    if (activeTab !== 'quiz') return;
+    if (!authReady || !user || !user.emailVerified || cloudReadyUid !== user.uid) return;
+    void fetchQuizHistoryForDataset(user.uid, activeQuizDatasetId);
+  }, [activeTab, activeQuizDatasetId, authReady, user, cloudReadyUid, fetchQuizHistoryForDataset]);
+
+  const handleRecordQuizSession = useCallback(
+    (datasetId: QuizDatasetId, input: RecordQuizSessionInput) => {
+      const storageKey = QUIZ_HISTORY_KEYS_BY_DATASET[datasetId];
+      const next = recordQuizSession(
+        quizHistoriesRef.current[datasetId],
+        input,
+        undefined,
+        storageKey
+      );
+      quizHistoriesRef.current = { ...quizHistoriesRef.current, [datasetId]: next };
+      setQuizHistories(prev => ({ ...prev, [datasetId]: next }));
+      if (user) {
+        setStoredOwnerUid(user.uid);
+        if (user.emailVerified) {
+          if (quizHistoryLoadedRef.current[datasetId]) {
+            void syncQuizHistoryWriteToCloud(user.uid, datasetId, next);
+          } else {
+            quizHistoryCanMergeLocalRef.current = true;
+            void fetchQuizHistoryForDataset(user.uid, datasetId);
+          }
+        }
+      }
+    },
+    [user, syncQuizHistoryWriteToCloud, fetchQuizHistoryForDataset]
+  );
+
+  const handleClearQuizHistory = useCallback(
+    (datasetId: QuizDatasetId) => {
+      const storageKey = QUIZ_HISTORY_KEYS_BY_DATASET[datasetId];
+      clearQuizHistory(undefined, storageKey);
+      quizHistoriesRef.current = { ...quizHistoriesRef.current, [datasetId]: [] };
+      setQuizHistories(prev => ({ ...prev, [datasetId]: [] }));
+      if (user && user.emailVerified && quizHistoryCloudExistsRef.current[datasetId]) {
+        void syncQuizHistoryWriteToCloud(user.uid, datasetId, []);
+      }
+    },
+    [user, syncQuizHistoryWriteToCloud]
   );
 
   const applyProgressChange = useCallback(
@@ -1094,15 +1318,35 @@ export default function App() {
           );
         }
       }
+      // Refresh active dataset's quiz history & push any other dataset with unsynced local quiz history
+      await fetchQuizHistoryForDataset(current.uid, activeQuizDatasetId, true);
+      for (const dsId of QUIZ_DATASET_IDS) {
+        if (dsId === activeQuizDatasetId) continue;
+        if (
+          quizHistoriesRef.current[dsId].length > 0 ||
+          quizHistoryCloudExistsRef.current[dsId]
+        ) {
+          await fetchQuizHistoryForDataset(current.uid, dsId, true);
+        }
+      }
       showToast(
         'success',
         'Sinkronisasi Selesai',
-        'Progres JLPT N4 dan Irodori terbaru telah disimpan ke cloud.'
+        'Progres & riwayat kuis JLPT N4 dan Irodori terbaru telah disinkronkan ke cloud.'
       );
     } finally {
       setSyncing(false);
     }
-  }, [syncing, syncProgressToCloud, syncIrodoriBookToCloud, datasetMode, irodoriBookId, showToast]);
+  }, [
+    syncing,
+    syncProgressToCloud,
+    syncIrodoriBookToCloud,
+    fetchQuizHistoryForDataset,
+    activeQuizDatasetId,
+    datasetMode,
+    irodoriBookId,
+    showToast,
+  ]);
 
   const handleSaveProfile = useCallback(
     async (nextName: string, nextAvatarUrl: string): Promise<boolean> => {
@@ -1180,6 +1424,10 @@ export default function App() {
       await signOut(auth);
       cloudDocExistsRef.current = false;
       irodoriCloudDocExistsRef.current = { pemula: false, dasar1: false, dasar2: false };
+      quizHistoryCloudExistsRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
+      quizHistoryLoadedRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
+      quizHistoryLoadingRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
+      setCloudReadyUid(null);
       justSignedInRef.current = false;
       setCustomDisplayName('');
       setCustomAvatarUrl('');
@@ -1193,6 +1441,7 @@ export default function App() {
         dasar1: { mastered: new Set<string>(), hard: new Set<string>() },
         dasar2: { mastered: new Set<string>(), hard: new Set<string>() },
       });
+      setQuizHistories({ n4: [], pemula: [], dasar1: [], dasar2: [] });
       const nextPool = computeCardPool(
         levelFilter,
         hideMastered,
@@ -1204,7 +1453,7 @@ export default function App() {
       showToast(
         'info',
         'Berhasil Keluar',
-        'Progres N4 dan Irodori Anda tetap tersimpan aman di akun Anda.'
+        'Progres & riwayat kuis N4 dan Irodori Anda tetap tersimpan aman di akun Anda.'
       );
     } catch (err) {
       showToast(
@@ -1864,6 +2113,11 @@ export default function App() {
                   levelFilter={levelFilter}
                   chapterFilter={chapterFilter}
                   modalOpen={anyModalOpen}
+                  quizHistory={quizHistories[activeQuizDatasetId]}
+                  cloudSyncEnabled={Boolean(user && user.emailVerified)}
+                  quizHistorySyncing={quizHistorySyncing}
+                  onRecordQuizSession={handleRecordQuizSession}
+                  onClearQuizHistory={handleClearQuizHistory}
                 />
               ) : null}
             </div>

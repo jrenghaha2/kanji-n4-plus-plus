@@ -88,6 +88,10 @@ export function clearStoredProgress(
     storage.removeItem(IRODORI_HARD_KEY);
     storage.removeItem(IRODORI_DASAR2_LS_KEY);
     storage.removeItem(IRODORI_DASAR2_HARD_KEY);
+    storage.removeItem('n4kanji_quiz_history_v1');
+    storage.removeItem('irodori_pemula_quiz_history_v1');
+    storage.removeItem('irodori_quiz_history_v1');
+    storage.removeItem('irodori_dasar2_quiz_history_v1');
     storage.removeItem(OWNER_UID_KEY);
   } catch {
     // Ignore storage lock errors

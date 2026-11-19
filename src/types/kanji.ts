@@ -193,16 +193,20 @@ export interface QuizAnswerSnapshot {
   itemR: string;
   itemM: string;
   expectedLabel: string;
+  chosenId?: string;
   chosenLabel: string;
   chosenM?: string;
   ex?: string;
 }
+
+export type QuizDatasetId = 'n4' | IrodoriBookId;
 
 export interface QuizSessionHistoryEntry {
   id: string;
   completedAt: string;
   level: LevelFilter;
   scopeLabel?: string;
+  chapters?: IrodoriChapterNumber[];
   mode: QuizTypeChoice;
   correct: number;
   total: number;

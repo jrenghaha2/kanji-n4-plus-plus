@@ -22,6 +22,8 @@ import type {
   IrodoriChapterNumber,
   IrodoriChapterSelection,
   LevelFilter,
+  QuizAnswerSnapshot,
+  QuizDatasetId,
   QuizOption,
   QuizQuestion,
   QuizRecord,
@@ -48,12 +50,27 @@ import {
   recordQuizSession,
 } from '../utils/quizStats';
 
+export interface RecordQuizSessionInput {
+  level: LevelFilter;
+  scopeLabel?: string;
+  chapters?: IrodoriChapterNumber[];
+  mode: QuizTypeChoice;
+  correct: number;
+  total: number;
+  answers?: QuizAnswerSnapshot[];
+}
+
 interface QuizPanelProps {
   datasetMode?: AppDatasetMode;
   irodoriBook?: IrodoriBookConfig;
   levelFilter: LevelFilter;
   chapterFilter?: IrodoriChapterFilter;
   modalOpen: boolean;
+  quizHistory?: QuizSessionHistoryEntry[];
+  cloudSyncEnabled?: boolean;
+  quizHistorySyncing?: boolean;
+  onRecordQuizSession?: (datasetId: QuizDatasetId, input: RecordQuizSessionInput) => void;
+  onClearQuizHistory?: (datasetId: QuizDatasetId) => void;
 }
 
 const PRESET_COUNTS = [10, 20, 50, 100, 500] as const;
@@ -146,8 +163,14 @@ export function QuizPanel({
   levelFilter,
   chapterFilter = 'all',
   modalOpen,
+  quizHistory: controlledQuizHistory,
+  cloudSyncEnabled = false,
+  quizHistorySyncing = false,
+  onRecordQuizSession,
+  onClearQuizHistory,
 }: QuizPanelProps) {
   const activeDataset = datasetMode === 'irodori' ? irodoriBook.data : KANJI;
+  const activeDatasetId: QuizDatasetId = datasetMode === 'irodori' ? irodoriBook.id : 'n4';
   const historyStorageKey =
     datasetMode === 'irodori' ? irodoriBook.quizHistoryKey : QUIZ_HISTORY_KEY;
 
@@ -191,9 +214,10 @@ export function QuizPanel({
   const [wrongFeedback, setWrongFeedback] = useState<QuizRecord | null>(null);
   const [showFurigana, setShowFurigana] = useState<boolean>(() => loadFuriganaPreference());
 
-  const [quizHistory, setQuizHistory] = useState<QuizSessionHistoryEntry[]>(() =>
-    loadQuizHistory(undefined, historyStorageKey)
+  const [localQuizHistory, setLocalQuizHistory] = useState<QuizSessionHistoryEntry[]>(() =>
+    controlledQuizHistory ?? loadQuizHistory(undefined, historyStorageKey)
   );
+  const quizHistory = controlledQuizHistory ?? localQuizHistory;
   const [confirmClearHistory, setConfirmClearHistory] = useState(false);
   const [historyModalSessionId, setHistoryModalSessionId] = useState<string | null>(null);
   const [historyAnswerFilter, setHistoryAnswerFilter] = useState<'all' | 'wrong' | 'right'>('all');
@@ -202,22 +226,28 @@ export function QuizPanel({
   const customInputRef = useRef<HTMLInputElement>(null);
   const sessionSavedRef = useRef(false);
   const activeSessionMetaRef = useRef<{
+    datasetId: QuizDatasetId;
     level: LevelFilter;
     scopeLabel: string;
+    chapters?: IrodoriChapterNumber[];
     mode: QuizTypeChoice;
     storageKey: string;
   }>({
+    datasetId: activeDatasetId,
     level: levelFilter,
     scopeLabel: activeScopeLabel,
+    chapters: datasetMode === 'irodori' ? [...selectedChapters] : undefined,
     mode: quizTypeChoice,
     storageKey: historyStorageKey,
   });
 
   useEffect(() => {
-    setQuizHistory(loadQuizHistory(undefined, historyStorageKey));
+    if (controlledQuizHistory === undefined) {
+      setLocalQuizHistory(loadQuizHistory(undefined, historyStorageKey));
+    }
     setConfirmClearHistory(false);
     setHistoryModalSessionId(null);
-  }, [historyStorageKey]);
+  }, [historyStorageKey, controlledQuizHistory]);
 
   useEffect(() => {
     if (!historyModalSessionId) return;
@@ -271,24 +301,24 @@ export function QuizPanel({
     const answered = rightList.length + wrongList.length;
     if (answered <= 0) return;
     sessionSavedRef.current = true;
-    const { level, scopeLabel, mode, storageKey } = activeSessionMetaRef.current;
+    const { datasetId, level, scopeLabel, chapters, mode, storageKey } =
+      activeSessionMetaRef.current;
     const answers = buildQuizAnswerSnapshots(rightList, wrongList);
-    setQuizHistory(prev =>
-      recordQuizSession(
-        prev,
-        {
-          level,
-          scopeLabel,
-          mode,
-          correct: rightList.length,
-          total: answered,
-          answers,
-        },
-        undefined,
-        storageKey
-      )
-    );
-  }, [stage, rightList, wrongList]);
+    const input: RecordQuizSessionInput = {
+      level,
+      scopeLabel,
+      ...(chapters ? { chapters } : {}),
+      mode,
+      correct: rightList.length,
+      total: answered,
+      answers,
+    };
+    if (onRecordQuizSession) {
+      onRecordQuizSession(datasetId, input);
+    } else {
+      setLocalQuizHistory(prev => recordQuizSession(prev, input, undefined, storageKey));
+    }
+  }, [stage, rightList, wrongList, onRecordQuizSession]);
 
   const performanceStats = useMemo(
     () => computeQuizPerformanceStats(quizHistory),
@@ -321,8 +351,10 @@ export function QuizPanel({
       if (!session.length) return;
       sessionSavedRef.current = false;
       activeSessionMetaRef.current = {
+        datasetId: activeDatasetId,
         level: levelFilter,
         scopeLabel: activeScopeLabel,
+        chapters: datasetMode === 'irodori' ? [...selectedChapters] : undefined,
         mode: quizTypeChoice,
         storageKey: historyStorageKey,
       };
@@ -336,7 +368,17 @@ export function QuizPanel({
       setWrongFeedback(null);
       setStage('run');
     },
-    [levelFilter, quizTypeChoice, activeDataset, activeChapterFilter, activeScopeLabel, historyStorageKey]
+    [
+      activeDatasetId,
+      datasetMode,
+      selectedChapters,
+      levelFilter,
+      quizTypeChoice,
+      activeDataset,
+      activeChapterFilter,
+      activeScopeLabel,
+      historyStorageKey,
+    ]
   );
 
   const advanceToNextQuestion = useCallback(() => {
@@ -487,7 +529,11 @@ export function QuizPanel({
                   type="button"
                   id="btnConfirmClearQuizStats"
                   onClick={() => {
-                    setQuizHistory(clearQuizHistory(undefined, historyStorageKey));
+                    if (onClearQuizHistory) {
+                      onClearQuizHistory(activeDatasetId);
+                    } else {
+                      setLocalQuizHistory(clearQuizHistory(undefined, historyStorageKey));
+                    }
                     setConfirmClearHistory(false);
                     setHistoryModalSessionId(null);
                   }}
@@ -706,6 +752,11 @@ export function QuizPanel({
                 <p className="text-xs text-slate-500 mt-0.5">
                   {datasetMode === 'irodori' ? irodoriBook.label : 'JLPT N4 Kanji'} ·{' '}
                   {quizHistory.length} sesi tersimpan
+                  {cloudSyncEnabled
+                    ? quizHistorySyncing
+                      ? ' · menyinkronkan...'
+                      : ' · sinkron cloud aktif'
+                    : ''}
                 </p>
               </div>
               <button

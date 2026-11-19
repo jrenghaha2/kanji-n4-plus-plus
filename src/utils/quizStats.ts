@@ -1,6 +1,8 @@
 import type {
+  IrodoriChapterNumber,
   LevelFilter,
   QuizAnswerSnapshot,
+  QuizDatasetId,
   QuizModelKey,
   QuizRecord,
   QuizSessionHistoryEntry,
@@ -15,6 +17,13 @@ export const IRODORI_PEMULA_QUIZ_HISTORY_KEY = 'irodori_pemula_quiz_history_v1';
 export const IRODORI_DASAR2_QUIZ_HISTORY_KEY = 'irodori_dasar2_quiz_history_v1';
 export const MAX_QUIZ_HISTORY = 15;
 export const MAX_STORED_ANSWERS_PER_SESSION = 500;
+
+export const QUIZ_HISTORY_KEYS_BY_DATASET: Record<QuizDatasetId, string> = {
+  n4: QUIZ_HISTORY_KEY,
+  pemula: IRODORI_PEMULA_QUIZ_HISTORY_KEY,
+  dasar1: IRODORI_QUIZ_HISTORY_KEY,
+  dasar2: IRODORI_DASAR2_QUIZ_HISTORY_KEY,
+};
 
 const VALID_LEVELS = new Set<LevelFilter>(['all', 'easy', 'medium', 'hard']);
 const VALID_MODEL_KEYS = new Set<QuizModelKey>(['k2r', 'k2m', 'm2k', 'r2k', 'ex2k']);
@@ -37,6 +46,18 @@ function getDefaultStorage(): StorageLike | null {
     return null;
   }
   return null;
+}
+
+function sanitizeChapterNumbers(raw: unknown): IrodoriChapterNumber[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const set = new Set<IrodoriChapterNumber>();
+  for (const ch of raw) {
+    if (typeof ch === 'number' && Number.isInteger(ch) && ch >= 1 && ch <= 18) {
+      set.add(ch as IrodoriChapterNumber);
+    }
+  }
+  if (set.size === 0) return undefined;
+  return [...set].sort((a, b) => a - b);
 }
 
 function isValidAnswerSnapshot(raw: unknown): raw is QuizAnswerSnapshot {
@@ -70,6 +91,9 @@ function sanitizeAnswerSnapshots(raw: unknown): QuizAnswerSnapshot[] | undefined
     itemR: ans.itemR,
     itemM: ans.itemM,
     expectedLabel: ans.expectedLabel,
+    ...(typeof ans.chosenId === 'string' && ans.chosenId.length > 0
+      ? { chosenId: ans.chosenId }
+      : {}),
     chosenLabel: ans.chosenLabel,
     ...(typeof ans.chosenM === 'string' ? { chosenM: ans.chosenM } : {}),
     ...(typeof ans.ex === 'string' ? { ex: ans.ex } : {}),
@@ -110,6 +134,7 @@ export function buildQuizAnswerSnapshots(
       itemR: rec.item.r,
       itemM: rec.item.m,
       expectedLabel,
+      chosenId: rec.chosen.id,
       chosenLabel: rec.chosenLabel,
       ...(rec.chosen.m && !correct ? { chosenM: rec.chosen.m } : {}),
       ...(rec.type === 'ex2k' && rec.item.ex ? { ex: rec.item.ex } : {}),
@@ -164,7 +189,12 @@ export function loadQuizHistory(
       .slice(0, MAX_QUIZ_HISTORY)
       .map(entry => {
         const sanitizedAnswers = sanitizeAnswerSnapshots(entry.answers);
-        return sanitizedAnswers ? { ...entry, answers: sanitizedAnswers } : entry;
+        const sanitizedChapters = sanitizeChapterNumbers(entry.chapters);
+        return {
+          ...entry,
+          ...(sanitizedChapters ? { chapters: sanitizedChapters } : {}),
+          ...(sanitizedAnswers ? { answers: sanitizedAnswers } : {}),
+        };
       });
   } catch {
     return [];
@@ -197,11 +227,32 @@ function persistHistoryWithQuotaFallback(
   }
 }
 
+export function saveQuizHistory(
+  entries: QuizSessionHistoryEntry[],
+  storage: StorageLike | null = getDefaultStorage(),
+  storageKey: string = QUIZ_HISTORY_KEY
+): QuizSessionHistoryEntry[] {
+  const capped = entries.slice(0, MAX_QUIZ_HISTORY);
+  if (storage) {
+    if (capped.length === 0) {
+      try {
+        storage.removeItem(storageKey);
+      } catch {
+        // Ignore storage lock errors
+      }
+    } else {
+      persistHistoryWithQuotaFallback(storage, storageKey, capped);
+    }
+  }
+  return capped;
+}
+
 export function recordQuizSession(
   currentHistory: QuizSessionHistoryEntry[],
   input: {
     level: LevelFilter;
     scopeLabel?: string;
+    chapters?: IrodoriChapterNumber[];
     mode: QuizTypeChoice;
     correct: number;
     total: number;
@@ -217,11 +268,13 @@ export function recordQuizSession(
   }
   const safeCorrect = Math.max(0, Math.min(input.total, Math.floor(input.correct)));
   const sanitizedAnswers = input.answers ? sanitizeAnswerSnapshots(input.answers) : undefined;
+  const sanitizedChapters = sanitizeChapterNumbers(input.chapters);
   const entry: QuizSessionHistoryEntry = {
     id: input.id ?? `q-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     completedAt: input.completedAt ?? new Date().toISOString(),
     level: VALID_LEVELS.has(input.level) ? input.level : 'all',
     ...(input.scopeLabel ? { scopeLabel: input.scopeLabel } : {}),
+    ...(sanitizedChapters ? { chapters: sanitizedChapters } : {}),
     mode: VALID_MODES.has(input.mode) ? input.mode : 'random',
     correct: safeCorrect,
     total: input.total,

@@ -172,43 +172,47 @@ export function AppHeader({
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 order-3 lg:order-4">
-          <button
-            type="button"
-            id="btnExportData"
-            onClick={onExport}
-            aria-label="Backup progres (.json)"
-            className="min-h-[40px] px-2.5 sm:px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:text-indigo-700 text-xs sm:text-sm font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-600"
-            title="Backup progres (.json)"
-          >
-            <Download className="w-4 h-4 shrink-0" aria-hidden="true" />
-            <span className="hidden md:inline">Backup</span>
-          </button>
+          {authReady && !user ? (
+            <>
+              <button
+                type="button"
+                id="btnExportData"
+                onClick={onExport}
+                aria-label="Backup progres (.json)"
+                className="min-h-[40px] px-2.5 sm:px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:text-indigo-700 text-xs sm:text-sm font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-600"
+                title="Backup progres (.json)"
+              >
+                <Download className="w-4 h-4 shrink-0" aria-hidden="true" />
+                <span className="hidden md:inline">Backup</span>
+              </button>
 
-          <button
-            ref={restoreBtnRef}
-            type="button"
-            id="btnImportData"
-            onClick={onTriggerImport}
-            aria-label="Restore progres (.json)"
-            className="min-h-[40px] px-2.5 sm:px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:text-indigo-700 text-xs sm:text-sm font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-600"
-            title="Restore progres (.json)"
-          >
-            <FolderOpen className="w-4 h-4 shrink-0" aria-hidden="true" />
-            <span className="hidden md:inline">Restore</span>
-          </button>
+              <button
+                ref={restoreBtnRef}
+                type="button"
+                id="btnImportData"
+                onClick={onTriggerImport}
+                aria-label="Restore progres (.json)"
+                className="min-h-[40px] px-2.5 sm:px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:text-indigo-700 text-xs sm:text-sm font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-600"
+                title="Restore progres (.json)"
+              >
+                <FolderOpen className="w-4 h-4 shrink-0" aria-hidden="true" />
+                <span className="hidden md:inline">Restore</span>
+              </button>
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            id="fileImportData"
-            accept=".json,application/json"
-            className="sr-only"
-            aria-label="Pilih file backup JSON"
-            onChange={e => {
-              const file = e.target.files?.[0];
-              if (file) onFileSelected(file);
-            }}
-          />
+              <input
+                ref={fileInputRef}
+                type="file"
+                id="fileImportData"
+                accept=".json,application/json"
+                className="sr-only"
+                aria-label="Pilih file backup JSON"
+                onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (file) onFileSelected(file);
+                }}
+              />
+            </>
+          ) : null}
 
           {!authReady ? (
             <div
@@ -216,7 +220,7 @@ export function AppHeader({
               className="h-10 w-[86px] sm:w-[104px] rounded-xl bg-slate-100 animate-pulse shrink-0"
             />
           ) : user ? (
-            <div ref={menuWrapperRef} className="relative pl-1 sm:pl-2 border-l border-slate-200">
+            <div ref={menuWrapperRef} className="relative">
               <button
                 ref={menuBtnRef}
                 type="button"

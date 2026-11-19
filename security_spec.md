@@ -20,16 +20,23 @@
    - `dasar2`: `<= 1,288` items (`^ir2_([1-9]|...|128[0-8])$`, `join(',').size() <= 12000`)
 5. **Zero Listing**: `allow list: if false;` — the client reads and subscribes directly to the 3 known book IDs.
 
+### C. `/users/{userId}/quizHistory/{datasetId}` (`QuizHistoryBucket`)
+1. **Master Gate**: All operations (`get`, `create`, `update`, `delete`) require the parent `/users/{userId}` document to exist (`exists(/databases/$(database)/documents/users/$(userId))`), evaluated after all cheap static checks.
+2. **Strict Dataset Allowlist**: `datasetId` path variable and `data.datasetId` field must match and be strictly in `['n4', 'pemula', 'dasar1', 'dasar2']`.
+3. **Closed Schema & Immutability**: Only `uid`, `datasetId`, `sessions`, `createdAt`, and `updatedAt` are permitted. Updates may only mutate `['sessions', 'updatedAt']`; `uid`, `datasetId`, and `createdAt` are immutable.
+4. **Compact ID-Reference Full-Array Validation**: `sessions` must be a unique list of `<= 15` compact ASCII session tokens (`join(',').size() <= 160000`), where **every element** (indices `0..14`) is validated via dual-separator join (`','` and `'~'`) against the strict token grammar (`id|completedAt|level|mode|correct|total|score|scopeCode|answersPacked`). Zero free-form text, HTML, or JSON strings are stored; full Kanji/Irodori labels and conjugated sentence forms are hydrated client-side from static bundled dictionaries.
+5. **Zero Listing**: `allow list: if false;` — the client lazy-reads only the specific active dataset document on demand (`1 getDoc` cached per session).
+
 ## 2. Adversarial Payloads & Access Attempts Tested (`firestore.rules.test.ts` & `firestore.emulator.test.ts`)
-1. **Unauthenticated Read/Write**: `auth = null` attempting `get` or `set` on `/users/userA` or `/users/userA/irodoriProgress/pemula` -> `PERMISSION_DENIED`.
+1. **Unauthenticated Read/Write**: `auth = null` attempting `get` or `set` on `/users/userA`, `/users/userA/irodoriProgress/pemula`, or `/users/userA/quizHistory/n4` -> `PERMISSION_DENIED`.
 2. **Unverified Email Mutation**: `email_verified: false` attempting `create`/`update` -> `PERMISSION_DENIED`.
 3. **Cross-User Read/Write/Delete**: `userB` attempting access to `userA` documents -> `PERMISSION_DENIED`.
-4. **Collection Scraping (`list`)**: Listing `/users` or `/users/{userId}/irodoriProgress` -> `PERMISSION_DENIED`.
-5. **Identity & Book Spoofing**: Mismatched `uid` or `bookId`, or invalid `bookId` (e.g. `dasar3`) -> `PERMISSION_DENIED`.
-6. **Master Gate Bypass**: Creating/reading `/users/{uid}/irodoriProgress/{bookId}` before `/users/{uid}` exists -> `PERMISSION_DENIED`.
+4. **Collection Scraping (`list`)**: Listing `/users`, `/users/{userId}/irodoriProgress`, or `/users/{userId}/quizHistory` -> `PERMISSION_DENIED`.
+5. **Identity & Dataset Spoofing**: Mismatched `uid`, `bookId`, or `datasetId`, or invalid `datasetId` (e.g. `dasar3`) -> `PERMISSION_DENIED`.
+6. **Master Gate Bypass**: Creating/reading `/users/{uid}/irodoriProgress/{bookId}` or `/users/{uid}/quizHistory/{datasetId}` before `/users/{uid}` exists -> `PERMISSION_DENIED`.
 7. **Shadow / Ghost Field Injection**: Adding `isAdmin: true` or `role: 'admin'` -> `PERMISSION_DENIED`.
-8. **Immortal Field Tampering & Forged Timestamps**: Mutating `uid`, `bookId`, `createdAt`, or supplying client timestamps -> `PERMISSION_DENIED`.
-9. **Full-Array XSS & Separator Smuggling (Index > 0)**: Payloads such as `['n1', 'n2', '<script>alert(1)</script>']`, `['irp1', 'irp2,irp3']`, `['n1', 'n2|n3']`, or non-string elements -> `PERMISSION_DENIED`.
-10. **Cross-Book Prefix Spoofing & Out-of-Range IDs**: Writing `ir1` inside `pemula`, `irp1137`, `ir1068`, `ir2_1289`, or `n501` -> `PERMISSION_DENIED`.
-11. **Duplicates & Mastered/Hard Overlap**: Duplicate IDs or identical IDs in both `mastered` and `hard` -> `PERMISSION_DENIED`.
+8. **Immortal Field Tampering & Forged Timestamps**: Mutating `uid`, `bookId`, `datasetId`, `createdAt`, or supplying client timestamps -> `PERMISSION_DENIED`.
+9. **Full-Array XSS & Separator Smuggling (Index > 0)**: Payloads such as `['n1', 'n2', '<script>alert(1)</script>']`, `['irp1', 'irp2,irp3']`, `['n1', 'n2|n3']`, comma/tilde smuggling inside `sessions` at index > 0, or non-string elements -> `PERMISSION_DENIED`.
+10. **Cross-Book Prefix Spoofing & Out-of-Range IDs / Scores**: Writing `ir1` inside `pemula`, `irp1137`, `ir1068`, `ir2_1289`, `n501`, `score > 100`, or `> 15` quiz sessions -> `PERMISSION_DENIED`.
+11. **Duplicates & Mastered/Hard Overlap**: Duplicate IDs/sessions or identical IDs in both `mastered` and `hard` -> `PERMISSION_DENIED`.
 12. **Unsafe Profile Inputs**: `javascript:` or `data:image/svg+xml` in `avatarUrl`, or `displayName > 60` chars -> `PERMISSION_DENIED`.
