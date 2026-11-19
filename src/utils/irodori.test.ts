@@ -19,10 +19,12 @@ import type { IrodoriChapterNumber, QuizModelKey } from '../types/kanji';
 import { analyzeSentenceBlank, conjugateWord, getWordMeta } from './morphology';
 import {
   ALL_5_KEYS,
+  HAS_KANJI_RE,
   buildQuizBank,
   buildQuizSession,
   formatChapterSelectionLabel,
   hasMeaningCollision,
+  isEntryEligibleForQuizModel,
   makeQuestion,
   normalizeTermText,
 } from './quizEngine';
@@ -144,11 +146,15 @@ test('all 18 Irodori chapters generate 4 unique valid options across all 5 quiz 
     }
   }
 
-  assert.equal(checked, 1067 * 5);
+  const expectedDasar1Bank = IRODORI_DATA.reduce(
+    (sum, item) => sum + ALL_5_KEYS.filter(k => isEntryEligibleForQuizModel(item, k)).length,
+    0
+  );
+  assert.equal(checked, expectedDasar1Bank);
 
   for (const key of ALL_5_KEYS as QuizModelKey[]) {
     const session = buildQuizSession('all', key, 10, IRODORI_DATA, rng, 1);
-    assert.equal(session.length, 10);
+    assert.ok(session.length > 0 && session.length <= 10);
     for (const q of session) {
       assert.equal(q.item.chapter, 1);
       assert.equal(q.type, key);
@@ -158,8 +164,12 @@ test('all 18 Irodori chapters generate 4 unique valid options across all 5 quiz 
   // Multi-chapter selection combines only requested chapters cleanly
   const multiChapters: IrodoriChapterNumber[] = [1, 3, 5];
   const multiBank = buildQuizBank('all', 'random5', IRODORI_DATA, multiChapters);
-  const expectedMultiCount =
-    IRODORI_DATA.filter(it => it.chapter === 1 || it.chapter === 3 || it.chapter === 5).length * 5;
+  const expectedMultiCount = IRODORI_DATA.filter(
+    it => it.chapter === 1 || it.chapter === 3 || it.chapter === 5
+  ).reduce(
+    (sum, it) => sum + ALL_5_KEYS.filter(k => isEntryEligibleForQuizModel(it, k)).length,
+    0
+  );
   assert.equal(multiBank.length, expectedMultiCount);
 
   const multiSession = buildQuizSession('all', 'random5', 30, IRODORI_DATA, rng, multiChapters);
@@ -327,7 +337,11 @@ test('IRODORI_BOOKS prepares Pemula, Dasar 1, and Dasar 2 with unique keys, Bab 
   }
 
   assert.deepEqual(quizFailures, []);
-  assert.equal(pemulaChecked, pemula.data.length * 5);
+  const expectedPemulaBank = pemula.data.reduce(
+    (sum, it) => sum + ALL_5_KEYS.filter(k => isEntryEligibleForQuizModel(it, k)).length,
+    0
+  );
+  assert.equal(pemulaChecked, expectedPemulaBank);
 
   // Verify Irodori Dasar 2 full Bab 1-18 dataset, PDF link, sentence blanks, and 5-model quiz options
   const dasar2 = IRODORI_BOOKS.dasar2;
@@ -393,7 +407,11 @@ test('IRODORI_BOOKS prepares Pemula, Dasar 1, and Dasar 2 with unique keys, Bab 
   }
 
   assert.deepEqual(d2QuizFailures, []);
-  assert.equal(d2Checked, dasar2.data.length * 5);
+  const expectedD2Bank = dasar2.data.reduce(
+    (sum, it) => sum + ALL_5_KEYS.filter(k => isEntryEligibleForQuizModel(it, k)).length,
+    0
+  );
+  assert.equal(d2Checked, expectedD2Bank);
 
   // Verify tuple builder for future books
   const sample = buildIrodoriEntries(
@@ -477,3 +495,119 @@ test('all 3 Irodori books guarantee zero ambiguous or duplicate correct answers 
   const qSoraK2M = makeQuestion(sora, 'k2m', 'all', dasar2, rng, 'all');
   assert.ok(qSoraK2M.promptHint?.includes(sora.r), 'Expected reading hint for 空 k2m');
 });
+
+test('Irodori k2r/r2k exclude kana-only & sentence outliers and balance distractor lengths cleanly', () => {
+  const rng = createDeterministicRng(4040);
+
+  for (const bookId of IRODORI_BOOK_ORDER) {
+    const book = getIrodoriBook(bookId);
+    const k2rBank = buildQuizBank('all', 'k2r', book.data, 'all');
+    const r2kBank = buildQuizBank('all', 'r2k', book.data, 'all');
+    assert.ok(k2rBank.length > 0, `${bookId} should have k2r questions`);
+    assert.equal(k2rBank.length, r2kBank.length);
+
+    for (const entry of k2rBank) {
+      const item = book.data[entry.kanjiIdx];
+      assert.ok(HAS_KANJI_RE.test(item.k), `${bookId}/${item.id} (${item.k}) in k2r must contain Kanji`);
+      assert.notEqual(
+        normalizeTermText(item.k),
+        normalizeTermText(item.r),
+        `${bookId}/${item.id} in k2r must not have identical surface and reading`
+      );
+      assert.ok(item.r.length <= 13, `${bookId}/${item.id} reading length should not exceed 13 in k2r`);
+    }
+
+    // Spot-check r2k options strictly contain Kanji on every single distractor
+    for (const entry of r2kBank) {
+      const item = book.data[entry.kanjiIdx];
+      const q = makeQuestion(item, 'r2k', 'all', book.data, rng, 'all');
+      for (const opt of q.options) {
+        assert.ok(
+          HAS_KANJI_RE.test(opt.item.k),
+          `${bookId}/${item.id} r2k distractor ${opt.item.k} must contain Kanji`
+        );
+      }
+    }
+  }
+
+  // Specific regression checks from user-reported giveaways
+  const pemula = IRODORI_BOOKS.pemula.data;
+  const wasure = pemula.find(d => d.k.includes('お忘れ物'))!;
+  assert.equal(isEntryEligibleForQuizModel(wasure, 'k2r'), false);
+  assert.equal(isEntryEligibleForQuizModel(wasure, 'r2k'), false);
+  assert.equal(isEntryEligibleForQuizModel(wasure, 'k2m'), true);
+  assert.equal(isEntryEligibleForQuizModel(wasure, 'm2k'), true);
+
+  const arigatou = pemula.find(d => d.k === 'ありがとうございます')!;
+  assert.equal(isEntryEligibleForQuizModel(arigatou, 'k2r'), false);
+  assert.equal(isEntryEligibleForQuizModel(arigatou, 'r2k'), false);
+
+  // Even in single-chapter Bab 13 quiz, long expression distractors must not be 3-char giveaways
+  const wasureM2K = makeQuestion(wasure, 'm2k', 'all', pemula, rng, 13);
+  const wasureDistLens = wasureM2K.options
+    .filter(o => o.item.id !== wasure.id)
+    .map(o => o.label.length);
+  assert.ok(
+    Math.min(...wasureDistLens) >= 9,
+    `Expected long distractors (>=9 chars) for ${wasure.k}, got ${JSON.stringify(wasureM2K.options.map(o => o.label))}`
+  );
+
+  const osaki = pemula.find(d => d.k === 'お先に失礼します')!;
+  const osakiK2R = makeQuestion(osaki, 'k2r', 'all', pemula, rng, 1);
+  const osakiDistLens = osakiK2R.options
+    .filter(o => o.item.id !== osaki.id)
+    .map(o => o.label.length);
+  assert.ok(
+    Math.min(...osakiDistLens) >= 8,
+    `Expected long distractors (>=8 chars) for ${osaki.k}, got ${JSON.stringify(osakiK2R.options.map(o => o.label))}`
+  );
+});
+
+test('Indonesian synonym collision detection blocks ambiguous distractors without over-blocking antonyms', () => {
+  // Positive synonym collision cases (including user-reported だいたい vs たいてい)
+  assert.equal(hasMeaningCollision('biasanya; kira-kira', 'umumnya; kebanyakan'), true);
+  assert.equal(hasMeaningCollision('sekitar ～', 'sekitar ～; kurang lebih ～ (contoh: sekitar 10 menit)'), true);
+  assert.equal(hasMeaningCollision('sangat bagus; luar biasa', 'menakjubkan; luar biasa'), true);
+  assert.equal(hasMeaningCollision('bermacam-macam; berbagai', 'berbagai macam'), true);
+  assert.equal(hasMeaningCollision('sekitar sini', 'sekitar; dekat sini'), true);
+  assert.equal(hasMeaningCollision('biasanya', 'seperti biasanya'), true);
+  assert.equal(hasMeaningCollision('sudah hampir; sebentar lagi', 'segera; sebentar lagi; hampir'), true);
+  assert.equal(hasMeaningCollision('memakai; mengenakan (pakaian)', 'menggunakan'), true);
+  assert.equal(hasMeaningCollision('wireless; nirkabel', 'tanpa kabel; cordless'), true);
+  assert.equal(hasMeaningCollision('pengumuman (suara)', 'pemberitahuan; notifikasi'), true);
+  assert.equal(hasMeaningCollision('sulit; susah', 'rumit; menyusahkan'), true);
+
+  // Negative checks: antonyms & distinct categories must NOT be treated as synonyms
+  assert.equal(hasMeaningCollision('enak; lezat', 'tidak enak; tidak lezat'), false);
+  assert.equal(hasMeaningCollision('mahir; pandai', 'tidak suka; kurang mahir'), false);
+  assert.equal(hasMeaningCollision('masalah', 'tidak masalah'), false);
+  assert.equal(hasMeaningCollision('Selamat pagi.', 'Selamat malam.'), false);
+  assert.equal(hasMeaningCollision('musim panas', 'musim dingin'), false);
+  assert.equal(hasMeaningCollision('panas (cuaca)', 'hangat (cuaca)'), false);
+
+  // Repeated quiz generation for だいたい must never pair with たいてい, ～ごろ, or ～ぐらい
+  const rng = createDeterministicRng(7777);
+  const pemula = IRODORI_BOOKS.pemula.data;
+  const daitai = pemula.find(d => d.k === 'だいたい')!;
+  assert.ok(daitai);
+  const forbiddenIds = new Set(
+    pemula
+      .filter(d => ['たいてい', '～ごろ', '～ぐらい'].includes(d.k))
+      .map(d => d.id)
+  );
+  assert.ok(forbiddenIds.size >= 3);
+
+  for (let trial = 0; trial < 25; trial++) {
+    for (const model of ['k2m', 'm2k', 'ex2k'] as const) {
+      const q = makeQuestion(daitai, model, 'all', pemula, rng, 'all');
+      assert.equal(q.options.length, 4);
+      for (const opt of q.options) {
+        assert.ok(
+          !forbiddenIds.has(opt.item.id),
+          `Trial ${trial} (${model}): だいたい should never compete with ${opt.item.k} (${opt.item.m})`
+        );
+      }
+    }
+  }
+});
+

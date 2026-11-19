@@ -28,6 +28,7 @@ import type {
 import {
   ABC_LABELS,
   QTYPES,
+  buildQuizBank,
   buildQuizSession,
   calculateQuizScore,
   formatChapterSelectionLabel,
@@ -78,6 +79,15 @@ const MODE_SHORT_LABEL: Record<QuizTypeChoice, string> = {
   r2k: 'あ→漢',
   ex2k: '📖→漢',
 };
+
+function getQuizModelLabel(typeKey: keyof typeof QTYPES, datasetMode: AppDatasetMode): string {
+  if (datasetMode === 'irodori') {
+    if (typeKey === 'k2m') return 'Kosakata → Arti';
+    if (typeKey === 'm2k') return 'Arti → Kosakata';
+    if (typeKey === 'ex2k') return 'Kalimat → Kosakata';
+  }
+  return QTYPES[typeKey].label;
+}
 
 function formatQuizTimestamp(iso: string): string {
   const date = new Date(iso);
@@ -223,7 +233,11 @@ export function QuizPanel({
     [levelFilter, activeDataset, activeChapterFilter]
   );
   const modelCount = getActiveTypeKeys(quizTypeChoice).length;
-  const totalBank = kanjiCount * modelCount;
+  const totalBank = useMemo(
+    () => buildQuizBank(levelFilter, quizTypeChoice, activeDataset, activeChapterFilter).length,
+    [levelFilter, quizTypeChoice, activeDataset, activeChapterFilter]
+  );
+  const hasKanaFilteredModels = totalBank < kanjiCount * modelCount;
   const disabledPresets = PRESET_COUNTS.filter(c => c > totalBank);
 
   const startQuiz = useCallback(
@@ -662,6 +676,16 @@ export function QuizPanel({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5" id="quizTypeGrid">
             {QUIZ_TYPE_OPTIONS.map(opt => {
               const active = quizTypeChoice === opt.key;
+              const optionLabel =
+                datasetMode === 'irodori'
+                  ? opt.key === 'k2m'
+                    ? 'Kosakata → Arti'
+                    : opt.key === 'm2k'
+                      ? 'Arti → Kosakata'
+                      : opt.key === 'ex2k'
+                        ? 'Contoh Kalimat → Kosakata (Sesuai Konjugasi)'
+                        : opt.label
+                  : opt.label;
               return (
                 <button
                   key={opt.key}
@@ -678,7 +702,7 @@ export function QuizPanel({
                   <span className="font-jp text-xs font-bold text-indigo-700 shrink-0">
                     {opt.short}
                   </span>
-                  <span>{opt.label}</span>
+                  <span>{optionLabel}</span>
                 </button>
               );
             })}
@@ -687,10 +711,13 @@ export function QuizPanel({
           <p className="text-sm text-slate-600">
             Bank soal aktif:{' '}
             <strong className="text-slate-900 font-mono-num">
-              {activeScopeLabel} ({kanjiCount} {datasetMode === 'irodori' ? 'kosakata' : 'kanji'} ×{' '}
-              {modelCount} model = {totalBank.toLocaleString('id-ID')} soal unik)
+              {hasKanaFilteredModels
+                ? `${activeScopeLabel} (${totalBank.toLocaleString('id-ID')} soal unik)`
+                : `${activeScopeLabel} (${kanjiCount} ${datasetMode === 'irodori' ? 'kosakata' : 'kanji'} × ${modelCount} model = ${totalBank.toLocaleString('id-ID')} soal unik)`}
             </strong>
-            .
+            {hasKanaFilteredModels
+              ? ' · kosakata tanpa kanji & kalimat penuh otomatis dilewati pada model 漢↔あ agar soal selalu relevan.'
+              : '.'}
           </p>
 
           <div>
@@ -791,7 +818,7 @@ export function QuizPanel({
           </span>
           <div className="flex items-center gap-3">
             <span className="text-xs font-semibold text-indigo-700" id="quizModeBadge">
-              {qInfo.short} · {qInfo.label}
+              {qInfo.short} · {getQuizModelLabel(q.type, datasetMode)}
             </span>
             <button
               type="button"
@@ -819,7 +846,13 @@ export function QuizPanel({
         </div>
 
         <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-10 text-center">
-          <p className="text-xs font-semibold text-slate-500 tracking-wide">{qInfo.prompt}</p>
+          <p className="text-xs font-semibold text-slate-500 tracking-wide">
+            {datasetMode === 'irodori' && q.type === 'm2k'
+              ? 'Pilih kosakata yang artinya:'
+              : datasetMode === 'irodori' && q.type === 'ex2k'
+                ? 'Kosakata mana yang melengkapi kalimat ini?'
+                : qInfo.prompt}
+          </p>
 
           <div
             id="quizMain"
@@ -921,7 +954,7 @@ export function QuizPanel({
       ? 'Acak 4 Model Utama'
       : quizTypeChoice === 'random5'
         ? 'Acak 5 Model (+Kalimat)'
-        : QTYPES[quizTypeChoice].label;
+        : getQuizModelLabel(quizTypeChoice, datasetMode);
 
   let msg = 'Jangan menyerah — ulangi kartunya lalu coba lagi!';
   if (score === 100) msg = 'Sempurna! Semua benar.';
@@ -956,7 +989,7 @@ export function QuizPanel({
                   className="rounded-xl border border-rose-200 bg-rose-50/40 p-3.5 text-sm leading-relaxed"
                 >
                   <div className="text-xs font-semibold text-slate-500">
-                    No. {rec.no} · {QTYPES[rec.type].label}
+                    No. {rec.no} · {getQuizModelLabel(rec.type, datasetMode)}
                   </div>
                   {rec.type === 'ex2k' ? (
                     <div className="mt-1 space-y-1">
@@ -973,7 +1006,8 @@ export function QuizPanel({
                     </div>
                   ) : (
                     <p className="mt-1 text-slate-800">
-                      <strong className="font-jp text-base">{rec.item.k}</strong> ({rec.item.r}) —{' '}
+                      <strong className="font-jp text-base">{rec.item.k}</strong>
+                      {rec.item.r && rec.item.r !== rec.item.k ? ` (${rec.item.r})` : ''} —{' '}
                       <span className="text-emerald-700 font-semibold">{rec.item.m}</span> ·
                       Jawabanmu:{' '}
                       <span className="text-rose-700 font-semibold">
@@ -1005,6 +1039,7 @@ export function QuizPanel({
                   rec.exMeta.targetSurface !== rec.item.k
                     ? `${rec.exMeta.targetSurface} (${rec.item.k})`
                     : rec.item.k;
+                const showReading = rec.item.r && rec.item.r !== ansShow;
                 return (
                   <div
                     key={`r-${rec.no}`}
@@ -1014,8 +1049,8 @@ export function QuizPanel({
                       No. {rec.no} · {QTYPES[rec.type].short}
                     </span>
                     <div className="mt-0.5 text-slate-900">
-                      <strong className="font-jp text-base">{ansShow}</strong> · {rec.item.r} —{' '}
-                      {rec.item.m}
+                      <strong className="font-jp text-base">{ansShow}</strong>
+                      {showReading ? ` · ${rec.item.r}` : ''} — {rec.item.m}
                     </div>
                   </div>
                 );
