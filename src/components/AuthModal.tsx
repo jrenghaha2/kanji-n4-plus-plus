@@ -144,21 +144,21 @@ export function AuthModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="authModalTitle"
-      className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-slate-900/50 dark:bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4"
       onClick={e => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <div
         ref={modalRef}
-        className="w-full max-w-md rounded-2xl bg-white border border-slate-200 shadow-2xl overflow-hidden"
+        className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden"
       >
-        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
+        <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">
           <div>
-            <h2 id="authModalTitle" className="text-base font-bold text-slate-900">
+            <h2 id="authModalTitle" className="text-base font-bold text-slate-900 dark:text-slate-50">
               {isSwitchingAccount ? 'Ganti Akun Belajar' : 'Masuk & Sinkronisasi Progres'}
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               {isSwitchingAccount
                 ? 'Pilih akun lain untuk melanjutkan atau berpindah progres.'
                 : 'Simpan progres hafalan kanji N4 secara otomatis ke cloud.'}
@@ -169,7 +169,7 @@ export function AuthModal({
             type="button"
             onClick={onClose}
             aria-label="Tutup dialog login"
-            className="w-9 h-9 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-500 hover:text-slate-800 inline-flex items-center justify-center cursor-pointer shrink-0"
+            className="w-9 h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-50 inline-flex items-center justify-center cursor-pointer shrink-0"
           >
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -182,7 +182,7 @@ export function AuthModal({
               id="btnAuthGoogle"
               disabled={busy}
               onClick={() => onGoogleLogin(isSwitchingAccount)}
-              className="min-h-[42px] px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 text-sm font-semibold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
+              className="min-h-[42px] px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 text-sm font-semibold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
             >
               <GoogleGlyph />
               <span>{isSwitchingAccount ? 'Pilih Akun Google' : 'Google'}</span>
@@ -193,7 +193,7 @@ export function AuthModal({
               id="btnAuthGithub"
               disabled={busy}
               onClick={onGithubLogin}
-              className="min-h-[42px] px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
+              className="min-h-[42px] px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white text-sm font-semibold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
             >
               <GithubGlyph />
               <span>GitHub</span>
@@ -201,17 +201,17 @@ export function AuthModal({
           </div>
 
           <div className="relative flex items-center py-0.5">
-            <div className="grow border-t border-slate-200" />
-            <span className="shrink mx-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            <div className="grow border-t border-slate-200 dark:border-slate-700" />
+            <span className="shrink mx-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
               atau dengan email
             </span>
-            <div className="grow border-t border-slate-200" />
+            <div className="grow border-t border-slate-200 dark:border-slate-700" />
           </div>
 
           <div
             role="tablist"
             aria-label="Mode autentikasi email"
-            className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1"
+            className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 dark:bg-slate-800 p-1"
           >
             <button
               type="button"
@@ -220,8 +220,8 @@ export function AuthModal({
               onClick={() => switchView('signin')}
               className={`min-h-[34px] rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
                 view === 'signin'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-50 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-50'
               }`}
             >
               Masuk
@@ -233,8 +233,8 @@ export function AuthModal({
               onClick={() => switchView('signup')}
               className={`min-h-[34px] rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
                 view === 'signup'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-50 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-50'
               }`}
             >
               Daftar Baru
@@ -246,8 +246,8 @@ export function AuthModal({
               onClick={() => switchView('reset')}
               className={`min-h-[34px] rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
                 view === 'reset'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-50 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-50'
               }`}
             >
               Lupa Sandi
@@ -257,11 +257,11 @@ export function AuthModal({
           {errorText ? (
             <div
               role="alert"
-              className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs text-rose-800 space-y-1.5"
+              className="rounded-xl border border-rose-200 dark:border-rose-800/80 bg-rose-50 dark:bg-rose-950/50 px-3.5 py-2.5 text-xs text-rose-800 dark:text-rose-200 space-y-1.5"
             >
               <p className="font-semibold">{errorText}</p>
               {showConsoleHint ? (
-                <p className="text-[11px] text-rose-700 leading-relaxed">
+                <p className="text-[11px] text-rose-700 dark:text-rose-300 leading-relaxed">
                   Aktifkan metode login ini di{' '}
                   <a
                     href={FIREBASE_AUTH_PROVIDERS_URL}
@@ -280,7 +280,7 @@ export function AuthModal({
           {infoText ? (
             <div
               role="status"
-              className="rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-xs text-emerald-800 font-medium"
+              className="rounded-xl border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50 dark:bg-emerald-950/50 px-3.5 py-2.5 text-xs text-emerald-800 dark:text-emerald-200 font-medium"
             >
               {infoText}
             </div>
@@ -291,7 +291,7 @@ export function AuthModal({
               <div>
                 <label
                   htmlFor="authNameInput"
-                  className="block text-xs font-semibold text-slate-700 mb-1"
+                  className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1"
                 >
                   Nama Tampilan
                 </label>
@@ -302,7 +302,7 @@ export function AuthModal({
                   value={name}
                   onChange={e => setName(e.target.value)}
                   placeholder="Contoh: Budi Santoso"
-                  className="w-full h-10 px-3 rounded-xl border border-slate-200 text-sm text-slate-900 focus:outline-2 focus:outline-indigo-600"
+                  className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-2 focus:outline-indigo-500"
                 />
               </div>
             ) : null}
@@ -310,13 +310,13 @@ export function AuthModal({
             <div>
               <label
                 htmlFor="authEmailInput"
-                className="block text-xs font-semibold text-slate-700 mb-1"
+                className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1"
               >
                 Alamat Email
               </label>
               <div className="relative">
                 <Mail
-                  className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                  className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
                   aria-hidden="true"
                 />
                 <input
@@ -327,7 +327,7 @@ export function AuthModal({
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   placeholder="nama@contoh.com"
-                  className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 text-sm text-slate-900 focus:outline-2 focus:outline-indigo-600"
+                  className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-2 focus:outline-indigo-500"
                 />
               </div>
             </div>
@@ -336,13 +336,13 @@ export function AuthModal({
               <div>
                 <label
                   htmlFor="authPasswordInput"
-                  className="block text-xs font-semibold text-slate-700 mb-1"
+                  className="block text-xs font-semibold text-slate-700 dark:text-slate-200 mb-1"
                 >
                   Kata Sandi
                 </label>
                 <div className="relative">
                   <KeyRound
-                    className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                    className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
                     aria-hidden="true"
                   />
                   <input
@@ -354,13 +354,13 @@ export function AuthModal({
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     placeholder="Minimal 6 karakter"
-                    className="w-full h-10 pl-9 pr-10 rounded-xl border border-slate-200 text-sm text-slate-900 focus:outline-2 focus:outline-indigo-600"
+                    className="w-full h-10 pl-9 pr-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-2 focus:outline-indigo-500"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPass(s => !s)}
                     aria-label={showPass ? 'Sembunyikan sandi' : 'Lihat sandi'}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-700 cursor-pointer"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
                   >
                     {showPass ? (
                       <EyeOff className="w-4 h-4" aria-hidden="true" />

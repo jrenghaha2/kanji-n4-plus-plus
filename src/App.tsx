@@ -15,6 +15,7 @@ import { KANJI, VALID_KANJI_IDS } from './data/kanjiData';
 import { useAuthActions } from './hooks/useAuthActions';
 import { useBackupRestore } from './hooks/useBackupRestore';
 import { useCloudProgressSync } from './hooks/useCloudProgressSync';
+import { useTheme } from './hooks/useTheme';
 import { useToast } from './hooks/useToast';
 import type {
   AppDatasetMode,
@@ -46,6 +47,7 @@ export default function App() {
   const [sessionNewMaster, setSessionNewMaster] = useState(0);
 
   const { toast, showToast, dismissToast } = useToast();
+  const { isDark, toggleTheme } = useTheme();
 
   const {
     user,
@@ -606,12 +608,14 @@ export default function App() {
     datasetMode === 'irodori' && activeIrodoriBook.data.length === 0;
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
+    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
       <div aria-hidden={anyModalOpen} className="flex-1 flex flex-col">
         <AppHeader
           datasetMode={datasetMode}
           irodoriBookTitle={activeIrodoriBook.label}
           onToggleDatasetMode={handleToggleDatasetMode}
+          isDark={isDark}
+          onToggleTheme={toggleTheme}
           masteredCount={levelMasteredCount}
           totalCount={levelIndices.length}
           restoreBtnRef={restoreBtnRef}
@@ -733,7 +737,7 @@ export default function App() {
           </div>
         </main>
 
-        <footer className="border-t border-slate-200 bg-white/70 py-5 px-4 text-center text-xs text-slate-500">
+        <footer className="border-t border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/80 py-5 px-4 text-center text-xs text-slate-500 dark:text-slate-400">
           {datasetMode === 'irodori'
             ? activeIrodoriBook.data.length > 0
               ? user

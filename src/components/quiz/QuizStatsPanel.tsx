@@ -58,11 +58,11 @@ export function QuizStatsPanel({
   return (
     <div
       id="quizStatsPanel"
-      className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 space-y-4"
+      className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 sm:p-6 space-y-4"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-          <BarChart3 className="w-4 h-4 text-indigo-600 shrink-0" aria-hidden="true" />
+        <h3 className="text-base font-bold text-slate-900 dark:text-slate-50 flex items-center gap-2">
+          <BarChart3 className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" aria-hidden="true" />
           <span>Statistik Performa Kuis</span>
         </h3>
 
@@ -72,7 +72,7 @@ export function QuizStatsPanel({
               type="button"
               id="btnOpenQuizAnswerHistory"
               onClick={() => onOpenAnswerHistory()}
-              className="min-h-[32px] px-3 py-1 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-600"
+              className="min-h-[32px] px-3 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/70 hover:bg-indigo-100 dark:hover:bg-indigo-900/70 text-indigo-700 dark:text-indigo-200 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-500"
             >
               <History className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
               <span>Riwayat Jawaban</span>
@@ -91,7 +91,7 @@ export function QuizStatsPanel({
                 <button
                   type="button"
                   onClick={() => onRequestClearHistory(false)}
-                  className="min-h-[32px] px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-xs font-semibold cursor-pointer"
+                  className="min-h-[32px] px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-200 text-xs font-semibold cursor-pointer"
                 >
                   Batal
                 </button>
@@ -101,7 +101,7 @@ export function QuizStatsPanel({
                 type="button"
                 id="btnClearQuizStats"
                 onClick={() => onRequestClearHistory(true)}
-                className="min-h-[32px] px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-slate-500 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                className="min-h-[32px] px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/60 hover:text-rose-700 dark:hover:text-rose-300 hover:border-rose-200 dark:hover:border-rose-800 text-slate-500 dark:text-slate-300 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                 <span>Hapus Riwayat</span>
@@ -112,33 +112,33 @@ export function QuizStatsPanel({
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 space-y-2">
-          <div className="text-xs font-semibold text-slate-500">Persentase Jawaban Benar</div>
+        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/60 p-3.5 space-y-2">
+          <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">Persentase Jawaban Benar</div>
           <div className="flex items-baseline justify-between gap-2">
             <span
               id="quizStatAccuracy"
-              className="text-2xl font-extrabold text-emerald-700 font-mono-num"
+              className="text-2xl font-extrabold text-emerald-700 dark:text-emerald-400 font-mono-num"
             >
               {performanceStats.overallAccuracyPct}%
             </span>
-            <span className="text-xs font-medium text-slate-600 font-mono-num">
+            <span className="text-xs font-medium text-slate-600 dark:text-slate-300 font-mono-num">
               {performanceStats.totalCorrect}/{performanceStats.totalAnswered} benar
             </span>
           </div>
-          <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden" aria-hidden="true">
+          <div className="h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden" aria-hidden="true">
             <div
-              className="h-full bg-emerald-600 rounded-full transition-all duration-300"
+              className="h-full bg-emerald-600 dark:bg-emerald-500 rounded-full transition-all duration-300"
               style={{ width: `${performanceStats.overallAccuracyPct}%` }}
             />
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 space-y-1.5">
-          <div className="text-xs font-semibold text-slate-500">Skor Terakhir</div>
+        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/60 p-3.5 space-y-1.5">
+          <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">Skor Terakhir</div>
           <div className="flex items-baseline justify-between gap-2">
             <span
               id="quizStatLatest"
-              className="text-2xl font-extrabold text-indigo-700 font-mono-num"
+              className="text-2xl font-extrabold text-indigo-700 dark:text-indigo-400 font-mono-num"
             >
               {performanceStats.latestScore !== null ? `${performanceStats.latestScore}%` : '—'}
             </span>
@@ -146,10 +146,10 @@ export function QuizStatsPanel({
               <span
                 className={`text-xs font-bold font-mono-num inline-flex items-center gap-0.5 ${
                   performanceStats.trendDelta > 0
-                    ? 'text-emerald-700'
+                    ? 'text-emerald-700 dark:text-emerald-400'
                     : performanceStats.trendDelta < 0
-                      ? 'text-rose-700'
-                      : 'text-slate-500'
+                      ? 'text-rose-700 dark:text-rose-400'
+                      : 'text-slate-500 dark:text-slate-400'
                 }`}
               >
                 {performanceStats.trendDelta > 0 ? (
@@ -164,87 +164,87 @@ export function QuizStatsPanel({
                 </span>
               </span>
             ) : (
-              <span className="text-xs text-slate-500">
+              <span className="text-xs text-slate-500 dark:text-slate-400">
                 {performanceStats.totalSessions === 1 ? 'Sesi pertama' : 'Belum ada sesi'}
               </span>
             )}
           </div>
-          <p className="text-[11px] text-slate-500">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
             {performanceStats.trendDelta !== null
               ? 'Dibanding skor kuis sebelumnya'
               : 'Selesaikan kuis untuk melihat tren'}
           </p>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 space-y-1.5">
-          <div className="text-xs font-semibold text-slate-500">Skor Terbaik</div>
+        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/60 p-3.5 space-y-1.5">
+          <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">Skor Terbaik</div>
           <div className="flex items-baseline justify-between gap-2">
             <span
               id="quizStatBest"
-              className="text-2xl font-extrabold text-slate-900 font-mono-num"
+              className="text-2xl font-extrabold text-slate-900 dark:text-slate-50 font-mono-num"
             >
               {performanceStats.totalSessions > 0 ? `${performanceStats.bestScore}%` : '—'}
             </span>
-            <span className="text-xs font-medium text-slate-600 font-mono-num">
+            <span className="text-xs font-medium text-slate-600 dark:text-slate-300 font-mono-num">
               {performanceStats.totalSessions} sesi
             </span>
           </div>
-          <p className="text-[11px] text-slate-500">Rekor akurasi tertinggi yang tersimpan</p>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">Rekor akurasi tertinggi yang tersimpan</p>
         </div>
       </div>
 
       {recentScores.length > 0 ? (
         <div className="space-y-2 pt-1">
-          <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
+          <div className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Riwayat Skor Terakhir
           </div>
           <ul
             id="quizRecentHistory"
-            className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden"
+            className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden"
           >
             {recentScores.map(entry => {
               const barColor =
                 entry.score >= 80
-                  ? 'bg-emerald-600'
+                  ? 'bg-emerald-600 dark:bg-emerald-500'
                   : entry.score >= 60
-                    ? 'bg-indigo-600'
+                    ? 'bg-indigo-600 dark:bg-indigo-500'
                     : 'bg-amber-500';
               const textColor =
                 entry.score >= 80
-                  ? 'text-emerald-700'
+                  ? 'text-emerald-700 dark:text-emerald-400'
                   : entry.score >= 60
-                    ? 'text-indigo-700'
-                    : 'text-amber-700';
+                    ? 'text-indigo-700 dark:text-indigo-400'
+                    : 'text-amber-700 dark:text-amber-400';
 
               return (
                 <li
                   key={entry.id}
-                  className="px-3.5 py-2.5 bg-white flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 text-xs sm:text-sm"
+                  className="px-3.5 py-2.5 bg-white dark:bg-slate-900 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 text-xs sm:text-sm"
                 >
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="font-jp font-bold text-slate-900 shrink-0">
+                    <span className="font-jp font-bold text-slate-900 dark:text-slate-50 shrink-0">
                       {MODE_SHORT_LABEL[entry.mode]}
                     </span>
-                    <span className="text-slate-300" aria-hidden="true">
+                    <span className="text-slate-300 dark:text-slate-600" aria-hidden="true">
                       ·
                     </span>
-                    <span className="text-slate-600 font-medium">
+                    <span className="text-slate-600 dark:text-slate-300 font-medium">
                       {entry.scopeLabel ?? `Level ${LEVELS[entry.level].label}`}
                     </span>
-                    <span className="text-slate-300 hidden sm:inline" aria-hidden="true">
+                    <span className="text-slate-300 dark:text-slate-600 hidden sm:inline" aria-hidden="true">
                       ·
                     </span>
-                    <span className="text-xs text-slate-500 hidden sm:inline">
+                    <span className="text-xs text-slate-500 dark:text-slate-400 hidden sm:inline">
                       {formatQuizTimestamp(entry.completedAt)}
                     </span>
                   </div>
 
                   <div className="flex items-center gap-2.5 ml-auto shrink-0">
-                    <span className="text-xs text-slate-600 font-mono-num">
+                    <span className="text-xs text-slate-600 dark:text-slate-300 font-mono-num">
                       {entry.correct}/{entry.total}
                     </span>
                     <div
-                      className="w-16 sm:w-20 h-1.5 rounded-full bg-slate-100 overflow-hidden"
+                      className="w-16 sm:w-20 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden"
                       aria-hidden="true"
                     >
                       <div
@@ -259,7 +259,7 @@ export function QuizStatsPanel({
                       type="button"
                       onClick={() => onOpenAnswerHistory(entry.id)}
                       aria-label={`Lihat detail jawaban sesi ${entry.scopeLabel ?? LEVELS[entry.level].label} (${entry.score}%)`}
-                      className="min-h-[28px] px-2.5 py-1 rounded-lg border border-slate-200 bg-slate-50 hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-700 text-slate-600 text-xs font-semibold transition-colors cursor-pointer"
+                      className="min-h-[28px] px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/70 hover:border-indigo-200 dark:hover:border-indigo-700 hover:text-indigo-700 dark:hover:text-indigo-200 text-slate-600 dark:text-slate-200 text-xs font-semibold transition-colors cursor-pointer"
                     >
                       Detail
                     </button>
@@ -270,7 +270,7 @@ export function QuizStatsPanel({
           </ul>
         </div>
       ) : (
-        <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">
+        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
           Belum ada riwayat skor. Selesaikan satu sesi kuis untuk memantau persentase jawaban benar
           dan riwayat skor Anda.
         </p>

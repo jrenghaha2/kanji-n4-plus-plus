@@ -31,18 +31,18 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     const isFreeDailyReadLimit = rawMsg.includes('Free daily read units per project');
 
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
         <div
           role="alert"
-          className="w-full max-w-lg rounded-2xl bg-white border border-rose-200 shadow-lg p-6 space-y-4"
+          className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-800/80 shadow-lg p-6 space-y-4"
         >
           <div className="space-y-1">
-            <h1 className="text-lg font-bold text-slate-900">
+            <h1 className="text-lg font-bold text-slate-900 dark:text-slate-50">
               {isQuotaExceeded
                 ? 'Batas Kuota Firestore Tercapai'
                 : 'Terjadi Gangguan Sinkronisasi'}
             </h1>
-            <p className="text-sm text-slate-600 leading-relaxed">
+            <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
               {isQuotaExceeded
                 ? 'Kuota harian gratis Firestore telah habis. Kuota akan direset keesokan hari (info paket Spark edisi Enterprise tersedia di halaman harga Firebase Firestore).'
                 : 'Aplikasi mengalami kendala saat memproses data. Muat ulang halaman untuk melanjutkan belajar.'}
@@ -50,7 +50,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           </div>
 
           {isFreeDailyReadLimit ? (
-            <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900 break-all">
+            <div className="rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/80 p-3 text-xs text-amber-900 dark:text-amber-200 break-all">
               Kelola kuota database:{' '}
               <a
                 href={getFirestoreUpgradeUrl()}
