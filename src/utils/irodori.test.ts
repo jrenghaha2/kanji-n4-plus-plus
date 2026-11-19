@@ -17,7 +17,15 @@ import {
 import { buildIrodoriEntries } from '../data/irodoriShared';
 import type { IrodoriChapterNumber, QuizModelKey } from '../types/kanji';
 import { analyzeSentenceBlank, conjugateWord, getWordMeta } from './morphology';
-import { ALL_5_KEYS, buildQuizBank, buildQuizSession, makeQuestion } from './quizEngine';
+import {
+  ALL_5_KEYS,
+  buildQuizBank,
+  buildQuizSession,
+  formatChapterSelectionLabel,
+  hasMeaningCollision,
+  makeQuestion,
+  normalizeTermText,
+} from './quizEngine';
 import {
   IRODORI_QUIZ_HISTORY_KEY,
   QUIZ_HISTORY_KEY,
@@ -54,14 +62,27 @@ function createDeterministicRng(seed = 2027): () => number {
   };
 }
 
-test('IRODORI_DATA contains 643 unique entries spanning Bab 1 to Bab 18', () => {
-  assert.equal(IRODORI_DATA.length, 643);
-  assert.equal(VALID_IRODORI_IDS.size, 643);
+test('IRODORI_DATA contains 1067 unique entries spanning Bab 1 to Bab 18 with legacy IDs intact', () => {
+  assert.equal(IRODORI_DATA.length, 1067);
+  assert.equal(VALID_IRODORI_IDS.size, 1067);
   assert.equal(Object.keys(IRODORI_CHAPTERS).length, 18);
   assert.deepEqual(
     IRODORI_CHAPTER_NUMBERS,
     [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
   );
+
+  // Legacy IDs ir1..ir643 must remain valid for saved user progress
+  for (let i = 1; i <= 643; i++) {
+    assert.ok(VALID_IRODORI_IDS.has(`ir${i}`), `Missing legacy Dasar 1 ID ir${i}`);
+  }
+
+  // Entries are ordered monotonically by chapter 1..18
+  for (let i = 1; i < IRODORI_DATA.length; i++) {
+    assert.ok(
+      (IRODORI_DATA[i - 1].chapter ?? 0) <= (IRODORI_DATA[i].chapter ?? 0),
+      `Dasar 1 chapters out of order at index ${i}`
+    );
+  }
 
   for (const chapter of IRODORI_CHAPTER_NUMBERS) {
     const indices = getIrodoriPoolIndices(chapter);
@@ -69,7 +90,7 @@ test('IRODORI_DATA contains 643 unique entries spanning Bab 1 to Bab 18', () => 
   }
 });
 
-test('all 643 Irodori entries produce valid sentence blanks and handle tricky compounds', () => {
+test('all 1067 Dasar 1 Irodori entries produce valid sentence blanks and handle tricky compounds', () => {
   const failures: string[] = [];
 
   for (const item of IRODORI_DATA) {
@@ -123,7 +144,7 @@ test('all 18 Irodori chapters generate 4 unique valid options across all 5 quiz 
     }
   }
 
-  assert.equal(checked, 643 * 5);
+  assert.equal(checked, 1067 * 5);
 
   for (const key of ALL_5_KEYS as QuizModelKey[]) {
     const session = buildQuizSession('all', key, 10, IRODORI_DATA, rng, 1);
@@ -133,6 +154,33 @@ test('all 18 Irodori chapters generate 4 unique valid options across all 5 quiz 
       assert.equal(q.type, key);
     }
   }
+
+  // Multi-chapter selection combines only requested chapters cleanly
+  const multiChapters: IrodoriChapterNumber[] = [1, 3, 5];
+  const multiBank = buildQuizBank('all', 'random5', IRODORI_DATA, multiChapters);
+  const expectedMultiCount =
+    IRODORI_DATA.filter(it => it.chapter === 1 || it.chapter === 3 || it.chapter === 5).length * 5;
+  assert.equal(multiBank.length, expectedMultiCount);
+
+  const multiSession = buildQuizSession('all', 'random5', 30, IRODORI_DATA, rng, multiChapters);
+  assert.equal(multiSession.length, 30);
+  for (const q of multiSession) {
+    assert.ok(
+      q.item.chapter === 1 || q.item.chapter === 3 || q.item.chapter === 5,
+      `Expected chapter in [1,3,5], got ${q.item.chapter}`
+    );
+    assert.equal(q.options.length, 4);
+  }
+
+  // Empty multi-chapter selection produces empty bank/session safely
+  assert.equal(buildQuizBank('all', 'random5', IRODORI_DATA, []).length, 0);
+  assert.equal(buildQuizSession('all', 'random5', 10, IRODORI_DATA, rng, []).length, 0);
+
+  // Scope label formatting for multi-chapter selections
+  assert.equal(formatChapterSelectionLabel([]), 'Belum ada bab dipilih');
+  assert.equal(formatChapterSelectionLabel([4]), 'Bab 4');
+  assert.equal(formatChapterSelectionLabel([1, 2, 3, 5, 8, 9]), 'Bab 1–3, 5, 8–9');
+  assert.equal(formatChapterSelectionLabel([...IRODORI_CHAPTER_NUMBERS]), 'Semua Bab (1–18)');
 });
 
 test('Irodori quiz history and progress storage stay isolated from N4 storage keys', () => {
@@ -199,16 +247,19 @@ test('IRODORI_BOOKS prepares Pemula, Dasar 1, and Dasar 2 with unique keys, Bab 
 
   assert.equal(isIrodoriBookPopulated('dasar1'), true);
   assert.equal(isIrodoriBookPopulated('pemula'), true);
-  assert.equal(isIrodoriBookPopulated('dasar2'), false);
+  assert.equal(isIrodoriBookPopulated('dasar2'), true);
   assert.deepEqual(
     getAvailableIrodoriBooks().map(b => b.id),
-    ['pemula', 'dasar1']
+    ['pemula', 'dasar1', 'dasar2']
   );
 
   // Verify Irodori Pemula full Bab 1-18 dataset, PDF link, sentence blanks, and 5-model quiz options
   const pemula = IRODORI_BOOKS.pemula;
-  assert.ok(pemula.data.length >= 700, `Expected full Pemula dataset, got ${pemula.data.length}`);
+  assert.equal(pemula.data.length, 1136, `Expected full 1136 Pemula dataset, got ${pemula.data.length}`);
   assert.equal(pemula.validIds.size, pemula.data.length);
+  for (let i = 1; i <= 769; i++) {
+    assert.ok(pemula.validIds.has(`irp${i}`), `Missing legacy Pemula ID irp${i}`);
+  }
   assert.equal(
     pemula.pdfPath,
     'https://drive.google.com/file/d/1Pqbslo4_fbmWlyy7aRdmXZs40DS98p0O/view?pli=1'
@@ -278,6 +329,72 @@ test('IRODORI_BOOKS prepares Pemula, Dasar 1, and Dasar 2 with unique keys, Bab 
   assert.deepEqual(quizFailures, []);
   assert.equal(pemulaChecked, pemula.data.length * 5);
 
+  // Verify Irodori Dasar 2 full Bab 1-18 dataset, PDF link, sentence blanks, and 5-model quiz options
+  const dasar2 = IRODORI_BOOKS.dasar2;
+  assert.ok(dasar2.data.length >= 600, `Expected full Dasar 2 dataset, got ${dasar2.data.length}`);
+  assert.equal(dasar2.validIds.size, dasar2.data.length);
+  assert.equal(
+    dasar2.pdfPath,
+    'https://drive.google.com/file/d/13XALHensHPg17psVHBMcODXkRIM19f_E/view'
+  );
+
+  for (const chapter of IRODORI_CHAPTER_NUMBERS) {
+    const chItems = dasar2.data.filter(it => it.chapter === chapter);
+    assert.ok(chItems.length >= 4, `Dasar 2 Bab ${chapter} should have at least 4 entries`);
+    assert.ok(!dasar2.chapters[chapter].jpTitle.includes('未入力'), `Dasar 2 Bab ${chapter} title should be populated`);
+  }
+
+  const d2BlankFailures: string[] = [];
+  for (const item of dasar2.data) {
+    const blank = analyzeSentenceBlank(item);
+    if (!blank.maskedEx.includes('（　　）')) {
+      d2BlankFailures.push(`${item.id} (Bab ${item.chapter} ${item.k}): missing blank in "${blank.maskedEx}"`);
+    }
+    if (!item.ex.includes(blank.targetSurface)) {
+      d2BlankFailures.push(`${item.id} (Bab ${item.chapter} ${item.k}): targetSurface "${blank.targetSurface}" not in "${item.ex}"`);
+    }
+  }
+  assert.deepEqual(d2BlankFailures, []);
+
+  const rng2 = createDeterministicRng(888);
+  const d2QuizFailures: string[] = [];
+  let d2Checked = 0;
+
+  for (const chapter of IRODORI_CHAPTER_NUMBERS as readonly IrodoriChapterNumber[]) {
+    const bank = buildQuizBank('all', 'random5', dasar2.data, chapter);
+    assert.ok(bank.length > 0, `Dasar 2 Bab ${chapter} quiz bank should not be empty`);
+
+    for (const entry of bank) {
+      const item = dasar2.data[entry.kanjiIdx];
+      const q = makeQuestion(item, entry.typeKey, 'all', dasar2.data, rng2, chapter);
+      d2Checked += 1;
+
+      const labels = q.options.map(o => o.label);
+      const ids = q.options.map(o => o.item.id);
+      if (q.options.length !== 4) {
+        d2QuizFailures.push(`Bab ${chapter} ${item.id} (${entry.typeKey}): expected 4 options, got ${q.options.length}`);
+      }
+      if (new Set(labels).size !== 4) {
+        d2QuizFailures.push(`Bab ${chapter} ${item.id} (${item.k}, ${entry.typeKey}): duplicate labels ${JSON.stringify(labels)}`);
+      }
+      if (new Set(ids).size !== 4) {
+        d2QuizFailures.push(`Bab ${chapter} ${item.id} (${entry.typeKey}): duplicate ids`);
+      }
+      if (!ids.includes(item.id)) {
+        d2QuizFailures.push(`Bab ${chapter} ${item.id} (${entry.typeKey}): missing correct answer`);
+      }
+      if (entry.typeKey === 'ex2k') {
+        const correctOpt = q.options.find(o => o.item.id === item.id);
+        if (!q.exMeta || !q.exMeta.maskedEx.includes('（　　）') || correctOpt?.label !== q.exMeta.targetSurface) {
+          d2QuizFailures.push(`Bab ${chapter} ${item.id} (ex2k): blank/label mismatch`);
+        }
+      }
+    }
+  }
+
+  assert.deepEqual(d2QuizFailures, []);
+  assert.equal(d2Checked, dasar2.data.length * 5);
+
   // Verify tuple builder for future books
   const sample = buildIrodoriEntries(
     [
@@ -293,5 +410,70 @@ test('IRODORI_BOOKS prepares Pemula, Dasar 1, and Dasar 2 with unique keys, Bab 
   assert.equal(sample[1].id, 'ir2_2');
   assert.equal(sample[1].dif, 'hard');
   assert.equal(sample[1].chapter, 14);
-  assert.equal(IRODORI_BOOKS.dasar2.data.length, 0);
+});
+
+test('all 3 Irodori books guarantee zero ambiguous or duplicate correct answers across all 5 models', () => {
+  const rng = createDeterministicRng(2028);
+  const violations: string[] = [];
+
+  for (const bookId of IRODORI_BOOK_ORDER) {
+    const book = getIrodoriBook(bookId);
+    const sameKReadingsMap = new Map<string, Set<string>>();
+    for (const e of book.data) {
+      const nk = normalizeTermText(e.k);
+      const set = sameKReadingsMap.get(nk) ?? new Set<string>();
+      set.add(normalizeTermText(e.r));
+      sameKReadingsMap.set(nk, set);
+    }
+
+    for (const item of book.data) {
+      for (const typeKey of ALL_5_KEYS) {
+        const q = makeQuestion(item, typeKey, 'all', book.data, rng, 'all');
+        const distractors = q.options.filter(o => o.item.id !== item.id);
+        const normKs = new Set(q.options.map(o => normalizeTermText(o.item.k)));
+        const normRs = new Set(q.options.map(o => normalizeTermText(o.item.r)));
+        const labels = new Set(q.options.map(o => o.label));
+
+        if (labels.size !== 4) {
+          violations.push(`${bookId}/${item.id}/${typeKey}: duplicate labels`);
+        }
+        if (normKs.size !== 4) {
+          violations.push(`${bookId}/${item.id}/${typeKey}: homograph collision in options`);
+        }
+        if (normRs.size !== 4) {
+          violations.push(`${bookId}/${item.id}/${typeKey}: homophone collision in options`);
+        }
+        if (typeKey === 'k2r') {
+          const validReadings = sameKReadingsMap.get(normalizeTermText(item.k)) ?? new Set();
+          for (const d of distractors) {
+            if (validReadings.has(normalizeTermText(d.item.r))) {
+              violations.push(
+                `${bookId}/${item.id}/k2r (${item.k}): distractor ${d.item.r} is another valid reading`
+              );
+            }
+          }
+        }
+        if (typeKey === 'k2m' || typeKey === 'm2k' || typeKey === 'ex2k') {
+          for (const d of distractors) {
+            if (hasMeaningCollision(item.m, d.item.m)) {
+              violations.push(
+                `${bookId}/${item.id}/${typeKey} (${item.k}="${item.m}"): synonym distractor ${d.item.k}="${d.item.m}"`
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+
+  assert.deepEqual(violations, []);
+
+  // Verify promptHint disambiguates Dasar 2 homographs like 空 (そら vs から) and 開く (ひらく vs あく)
+  const dasar2 = IRODORI_BOOKS.dasar2.data;
+  const sora = dasar2.find(it => it.k === '空' && it.r === 'そら')!;
+  assert.ok(sora);
+  const qSoraK2R = makeQuestion(sora, 'k2r', 'all', dasar2, rng, 'all');
+  assert.ok(qSoraK2R.promptHint?.includes(sora.m), 'Expected meaning hint for 空 k2r');
+  const qSoraK2M = makeQuestion(sora, 'k2m', 'all', dasar2, rng, 'all');
+  assert.ok(qSoraK2M.promptHint?.includes(sora.r), 'Expected reading hint for 空 k2m');
 });

@@ -15,6 +15,7 @@ import {
 } from './irodoriPemulaPart1';
 import { RAW_IRODORI_PEMULA_PART2 } from './irodoriPemulaPart2';
 import { RAW_IRODORI_PEMULA_PART3 } from './irodoriPemulaPart3';
+import { RAW_IRODORI_PEMULA_EXTRA } from './irodoriPemulaExtra';
 
 /**
  * Materi lengkap Irodori Pemula (いろどり 入門 · Level A1 · Bab 1–18).
@@ -225,10 +226,11 @@ export const RAW_IRODORI_PEMULA: RawIrodoriPemulaTuple[] = [
   ...RAW_IRODORI_PEMULA_PART1,
   ...RAW_IRODORI_PEMULA_PART2,
   ...RAW_IRODORI_PEMULA_PART3,
+  ...RAW_IRODORI_PEMULA_EXTRA,
 ];
 
 export const IRODORI_PEMULA_DATA: KanjiEntry[] = RAW_IRODORI_PEMULA.map(
-  ([chapter, k, r, romaji, accent, m, subSection, ex, exi], idx) => ({
+  ([chapter, k, r, romaji, accent, m, subSection, ex, exi], idx): KanjiEntry => ({
     id: `irp${idx + 1}`,
     k,
     r,
@@ -243,7 +245,7 @@ export const IRODORI_PEMULA_DATA: KanjiEntry[] = RAW_IRODORI_PEMULA.map(
     dif: chapterToDifficulty(chapter),
     chapter,
   })
-);
+).sort((a, b) => (a.chapter ?? 0) - (b.chapter ?? 0));
 
 export const VALID_IRODORI_PEMULA_IDS: Set<string> = new Set(
   IRODORI_PEMULA_DATA.map(it => it.id)

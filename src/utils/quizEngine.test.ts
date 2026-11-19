@@ -3,7 +3,14 @@ import assert from 'node:assert/strict';
 import { KANJI } from '../data/kanjiData';
 import type { LevelFilter, QuizModelKey } from '../types/kanji';
 import { getWordMeta } from './morphology';
-import { ALL_5_KEYS, buildQuizBank, buildQuizSession, makeQuestion } from './quizEngine';
+import {
+  ALL_5_KEYS,
+  buildQuizBank,
+  buildQuizSession,
+  hasMeaningCollision,
+  makeQuestion,
+  normalizeTermText,
+} from './quizEngine';
 
 function createDeterministicRng(seed = 42): () => number {
   let state = seed >>> 0;
@@ -100,4 +107,29 @@ test('every model key in ALL_5_KEYS produces distinct labels when running buildQ
       assert.equal(q.options.length, 4);
     }
   }
+});
+
+test('N4 quiz questions never present synonymous meanings, homophones, or homographs as competing options', () => {
+  const rng = createDeterministicRng(3030);
+  const violations: string[] = [];
+
+  for (const item of KANJI) {
+    for (const key of ALL_5_KEYS) {
+      const q = makeQuestion(item, key, 'all', KANJI, rng);
+      const distractors = q.options.filter(o => o.item.id !== item.id);
+      const normKs = new Set(q.options.map(o => normalizeTermText(o.item.k)));
+      const normRs = new Set(q.options.map(o => normalizeTermText(o.item.r)));
+      if (normKs.size !== 4) violations.push(`${item.id}/${key}: homograph collision`);
+      if (normRs.size !== 4) violations.push(`${item.id}/${key}: homophone collision`);
+      if (key === 'k2m' || key === 'm2k' || key === 'ex2k') {
+        for (const d of distractors) {
+          if (hasMeaningCollision(item.m, d.item.m)) {
+            violations.push(`${item.id}/${key} (${item.m}) collided with ${d.item.id} (${d.item.m})`);
+          }
+        }
+      }
+    }
+  }
+
+  assert.deepEqual(violations, []);
 });

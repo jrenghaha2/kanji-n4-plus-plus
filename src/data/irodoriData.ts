@@ -4,6 +4,7 @@ import type {
   IrodoriChapterNumber,
   KanjiEntry,
 } from '../types/kanji';
+import { RAW_IRODORI_DASAR1_EXTRA } from './irodoriDasar1Extra';
 
 export const IRODORI_PDF_PATH =
   'https://drive.google.com/file/d/1WsoXCZjCcOYGG_3FlVNbQjDxeQvim6-E/view?pli=1';
@@ -904,8 +905,8 @@ function chapterToDifficulty(ch: IrodoriChapterNumber): DifficultyLevel {
   return 'hard';
 }
 
-export const IRODORI_DATA: KanjiEntry[] = RAW_IRODORI.map(
-  ([chapter, k, r, accent, m, subSection, ex, exi], idx) => ({
+export const IRODORI_DATA: KanjiEntry[] = [...RAW_IRODORI, ...RAW_IRODORI_DASAR1_EXTRA]
+  .map(([chapter, k, r, accent, m, subSection, ex, exi], idx): KanjiEntry => ({
     id: `ir${idx + 1}`,
     k,
     r,
@@ -917,8 +918,8 @@ export const IRODORI_DATA: KanjiEntry[] = RAW_IRODORI.map(
     chapter,
     accent,
     subSection,
-  })
-);
+  }))
+  .sort((a, b) => (a.chapter ?? 0) - (b.chapter ?? 0));
 
 export const VALID_IRODORI_IDS: Set<string> = new Set(IRODORI_DATA.map(it => it.id));
 

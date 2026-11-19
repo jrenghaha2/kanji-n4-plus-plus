@@ -32,14 +32,91 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    function isValidKanjiIdSample(val) {
-      return val is string && val.size() >= 2 && val.size() <= 5 && val.matches('^n[0-9]{1,3}$');
+    function isValidKanjiId(val) {
+      return val is string
+        && val.size() >= 2
+        && val.size() <= 4
+        && val.matches('^n([1-9]|[1-9][0-9]|[1-4][0-9]{2}|500)$');
     }
 
+    // Full-array validation without loops:
+    // 1. Enforces list type, max size (<= 500), and unique elements via toSet().
+    // 2. Validates EVERY element via dual-separator join (',' and '|'):
+    //    - Any non-string element fails join() with a runtime deny.
+    //    - Because valid IDs contain only [n0-9], checking BOTH ',' and '|'
+    //      mathematically prevents separator injection (e.g. ["n1", "n2,n3"] or ["n1", "n2|n3"])
+    //      and rejects any malicious/invalid element at ANY index (e.g. index 2 or 499).
     function isValidKanjiList(arr) {
       return arr is list
         && arr.size() <= 500
-        && (arr.size() == 0 || isValidKanjiIdSample(arr[0]));
+        && arr.toSet().size() == arr.size()
+        && (
+          arr.size() == 0
+          || (
+            isValidKanjiId(arr[0])
+            && arr.join(',').size() <= 2500
+            && arr.join(',').matches('^n([1-9]|[1-9][0-9]|[1-4][0-9]{2}|500)(,n([1-9]|[1-9][0-9]|[1-4][0-9]{2}|500))*$')
+            && arr.join('|').matches('^n([1-9]|[1-9][0-9]|[1-4][0-9]{2}|500)(\\|n([1-9]|[1-9][0-9]|[1-4][0-9]{2}|500))*$')
+          )
+        );
+    }
+
+    function isValidIrodoriBookId(bookId) {
+      return bookId is string && bookId in ['pemula', 'dasar1', 'dasar2'];
+    }
+
+    function isValidIrodoriPemulaList(arr) {
+      return arr is list
+        && arr.size() <= 1136
+        && arr.toSet().size() == arr.size()
+        && (
+          arr.size() == 0
+          || (
+            arr[0] is string
+            && arr[0].matches('^irp([1-9]|[1-9][0-9]|[1-9][0-9]{2}|10[0-9]{2}|11[0-2][0-9]|113[0-6])$')
+            && arr.join(',').size() <= 9500
+            && arr.join(',').matches('^irp([1-9]|[1-9][0-9]|[1-9][0-9]{2}|10[0-9]{2}|11[0-2][0-9]|113[0-6])(,irp([1-9]|[1-9][0-9]|[1-9][0-9]{2}|10[0-9]{2}|11[0-2][0-9]|113[0-6]))*$')
+            && arr.join('|').matches('^irp([1-9]|[1-9][0-9]|[1-9][0-9]{2}|10[0-9]{2}|11[0-2][0-9]|113[0-6])(\\|irp([1-9]|[1-9][0-9]|[1-9][0-9]{2}|10[0-9]{2}|11[0-2][0-9]|113[0-6]))*$')
+          )
+        );
+    }
+
+    function isValidIrodoriDasar1List(arr) {
+      return arr is list
+        && arr.size() <= 1067
+        && arr.toSet().size() == arr.size()
+        && (
+          arr.size() == 0
+          || (
+            arr[0] is string
+            && arr[0].matches('^ir([1-9]|[1-9][0-9]|[1-9][0-9]{2}|10[0-5][0-9]|106[0-7])$')
+            && arr.join(',').size() <= 8000
+            && arr.join(',').matches('^ir([1-9]|[1-9][0-9]|[1-9][0-9]{2}|10[0-5][0-9]|106[0-7])(,ir([1-9]|[1-9][0-9]|[1-9][0-9]{2}|10[0-5][0-9]|106[0-7]))*$')
+            && arr.join('|').matches('^ir([1-9]|[1-9][0-9]|[1-9][0-9]{2}|10[0-5][0-9]|106[0-7])(\\|ir([1-9]|[1-9][0-9]|[1-9][0-9]{2}|10[0-5][0-9]|106[0-7]))*$')
+          )
+        );
+    }
+
+    function isValidIrodoriDasar2List(arr) {
+      return arr is list
+        && arr.size() <= 1288
+        && arr.toSet().size() == arr.size()
+        && (
+          arr.size() == 0
+          || (
+            arr[0] is string
+            && arr[0].matches('^ir2_([1-9]|[1-9][0-9]|[1-9][0-9]{2}|1[0-1][0-9]{2}|12[0-7][0-9]|128[0-8])$')
+            && arr.join(',').size() <= 12000
+            && arr.join(',').matches('^ir2_([1-9]|[1-9][0-9]|[1-9][0-9]{2}|1[0-1][0-9]{2}|12[0-7][0-9]|128[0-8])(,ir2_([1-9]|[1-9][0-9]|[1-9][0-9]{2}|1[0-1][0-9]{2}|12[0-7][0-9]|128[0-8]))*$')
+            && arr.join('|').matches('^ir2_([1-9]|[1-9][0-9]|[1-9][0-9]{2}|1[0-1][0-9]{2}|12[0-7][0-9]|128[0-8])(\\|ir2_([1-9]|[1-9][0-9]|[1-9][0-9]{2}|1[0-1][0-9]{2}|12[0-7][0-9]|128[0-8]))*$')
+          )
+        );
+    }
+
+    function isValidIrodoriList(arr, bookId) {
+      return (bookId == 'pemula' && isValidIrodoriPemulaList(arr))
+        || (bookId == 'dasar1' && isValidIrodoriDasar1List(arr))
+        || (bookId == 'dasar2' && isValidIrodoriDasar2List(arr));
     }
 
     function isValidDisplayName(data) {
@@ -65,8 +142,25 @@ service cloud.firestore {
         && data.uid == request.auth.uid
         && isValidKanjiList(data.mastered)
         && isValidKanjiList(data.hard)
+        && data.mastered.toSet().intersection(data.hard.toSet()).size() == 0
         && isValidDisplayName(data)
         && isValidAvatarUrl(data)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Standalone Validation Blueprint for IrodoriBookProgress (safe for both create and update)
+    function isValidIrodoriProgress(data, bookId) {
+      return data.keys().hasAll(['uid', 'bookId', 'mastered', 'hard', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'bookId', 'mastered', 'hard', 'createdAt', 'updatedAt'])
+        && data.uid is string
+        && isValidId(data.uid)
+        && data.uid == request.auth.uid
+        && isValidIrodoriBookId(data.bookId)
+        && data.bookId == bookId
+        && isValidIrodoriList(data.mastered, bookId)
+        && isValidIrodoriList(data.hard, bookId)
+        && data.mastered.toSet().intersection(data.hard.toSet()).size() == 0
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -109,6 +203,48 @@ service cloud.firestore {
         && isVerifiedUser()
         && isValidId(userId)
         && isOwner(userId);
+
+      // --- /users/{userId}/irodoriProgress/{bookId} ---
+      match /irodoriProgress/{bookId} {
+        allow get: if isSignedIn()
+          && isValidId(userId)
+          && isOwner(userId)
+          && isValidIrodoriBookId(bookId)
+          && exists(/databases/$(database)/documents/users/$(userId));
+
+        allow list: if false;
+
+        allow create: if isSignedIn()
+          && isVerifiedUser()
+          && isValidId(userId)
+          && isOwner(userId)
+          && isValidIrodoriBookId(bookId)
+          && isValidIrodoriProgress(incoming(), bookId)
+          && incoming().uid == userId
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId));
+
+        allow update: if isSignedIn()
+          && isVerifiedUser()
+          && isValidId(userId)
+          && isOwner(userId)
+          && isValidIrodoriBookId(bookId)
+          && isValidIrodoriProgress(incoming(), bookId)
+          && incoming().uid == existing().uid
+          && incoming().bookId == existing().bookId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['mastered', 'hard', 'updatedAt'])
+          && exists(/databases/$(database)/documents/users/$(userId));
+
+        allow delete: if isSignedIn()
+          && isVerifiedUser()
+          && isValidId(userId)
+          && isOwner(userId)
+          && isValidIrodoriBookId(bookId)
+          && exists(/databases/$(database)/documents/users/$(userId));
+      }
     }
   }
 }

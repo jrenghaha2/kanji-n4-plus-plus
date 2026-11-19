@@ -26,6 +26,7 @@ export type IrodoriChapterNumber =
 export type IrodoriBookId = 'pemula' | 'dasar1' | 'dasar2';
 
 export type IrodoriChapterFilter = 'all' | IrodoriChapterNumber;
+export type IrodoriChapterSelection = IrodoriChapterFilter | readonly IrodoriChapterNumber[];
 
 export interface IrodoriChapterMeta {
   chapter: IrodoriChapterNumber;
@@ -111,8 +112,11 @@ export type ConjugationForm =
   | 'masen'
   | 'mashou'
   | 'te'
+  | 'ta'
   | 'nai'
   | 'passive_mashita'
+  | 'passive_masu'
+  | 'passive_te'
   | 'potential_masen'
   | 'potential_masu'
   | 'i_dict'
@@ -147,6 +151,7 @@ export interface QuizQuestion {
   type: QuizModelKey;
   exMeta: SentenceBlank | null;
   options: QuizOption[];
+  promptHint?: string;
 }
 
 export interface QuizRecord {

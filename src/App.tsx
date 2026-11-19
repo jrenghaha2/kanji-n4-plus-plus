@@ -46,13 +46,16 @@ import type {
 } from './types/kanji';
 import {
   areSetsEqual,
+  buildIrodoriProgressWriteData,
   buildUserProfileWriteData,
   buildUserProgressWriteData,
   markKanjiHard,
   markKanjiMastered,
+  mergeIrodoriProgressSets,
   mergeProgressSets,
   sanitizeAvatarUrl,
   sanitizeDisplayName,
+  sanitizeIrodoriProgressLists,
   sanitizeProgressLists,
 } from './utils/progressSync';
 import { getPoolIndices, shuffled } from './utils/quizEngine';
@@ -227,11 +230,18 @@ export default function App() {
   masteredRef.current = mastered;
   const hardRef = useRef(hardSet);
   hardRef.current = hardSet;
+  const irodoriProgressRef = useRef(irodoriProgress);
+  irodoriProgressRef.current = irodoriProgress;
   const customNameRef = useRef(customDisplayName);
   customNameRef.current = customDisplayName;
   const customAvatarRef = useRef(customAvatarUrl);
   customAvatarRef.current = customAvatarUrl;
   const cloudDocExistsRef = useRef(false);
+  const irodoriCloudDocExistsRef = useRef<Record<IrodoriBookId, boolean>>({
+    pemula: false,
+    dasar1: false,
+    dasar2: false,
+  });
   const justSignedInRef = useRef(false);
 
   if (fatalError) {
@@ -297,10 +307,11 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Firestore initial sync + real-time listener (attached only when auth is ready, user exists & email verified)
+  // Firestore initial sync + real-time listeners (N4 + all 3 Irodori books)
   useEffect(() => {
     if (!authReady || !user) {
       cloudDocExistsRef.current = false;
+      irodoriCloudDocExistsRef.current = { pemula: false, dasar1: false, dasar2: false };
       setCustomDisplayName('');
       setCustomAvatarUrl('');
       setSyncing(false);
@@ -310,6 +321,7 @@ export default function App() {
     const uid = user.uid;
     if (!user.emailVerified) {
       cloudDocExistsRef.current = false;
+      irodoriCloudDocExistsRef.current = { pemula: false, dasar1: false, dasar2: false };
       setStoredOwnerUid(uid);
       setCustomDisplayName(sanitizeDisplayName(user.displayName));
       setCustomAvatarUrl(sanitizeAvatarUrl(user.photoURL));
@@ -318,7 +330,7 @@ export default function App() {
     }
 
     let cancelled = false;
-    let unsubSnapshot: (() => void) | null = null;
+    const unsubSnapshots: Array<() => void> = [];
     const docPath = `users/${uid}`;
     const userDocRef = doc(db, 'users', uid);
 
@@ -333,7 +345,14 @@ export default function App() {
         const localM = canMergeLocal ? masteredRef.current : new Set<string>();
         const localH = canMergeLocal ? hardRef.current : new Set<string>();
 
+        let isNewCloudAccount = false;
+        let n4MasteredCount = 0;
+        let n4HardCount = 0;
+        let totalMergedFromLocal = 0;
+        let totalLocalSyncedOnCreate = 0;
+
         if (!snap.exists()) {
+          isNewCloudAccount = true;
           cloudDocExistsRef.current = false;
           const payload = buildUserProgressWriteData(uid, localM, localH);
           const initialName = sanitizeDisplayName(customNameRef.current || user.displayName);
@@ -361,17 +380,9 @@ export default function App() {
           setHardSet(cleanLocalH);
           setCustomDisplayName(initialName);
           setCustomAvatarUrl(initialAvatar);
-
-          if (justSignedInRef.current) {
-            showToast(
-              'success',
-              'Login Berhasil',
-              cleanLocalM.size > 0
-                ? `${cleanLocalM.size} kanji hafal disinkronkan ke akun Anda.`
-                : 'Akun terhubung. Progres belajar akan tersimpan ke cloud.'
-            );
-            justSignedInRef.current = false;
-          }
+          n4MasteredCount = cleanLocalM.size;
+          n4HardCount = cleanLocalH.size;
+          totalLocalSyncedOnCreate += cleanLocalM.size + cleanLocalH.size;
         } else {
           cloudDocExistsRef.current = true;
           const data = snap.data() as {
@@ -387,7 +398,8 @@ export default function App() {
           const cloudMSet = new Set(cleanCloud.mastered);
           const cloudHSet = new Set(cleanCloud.hard);
 
-          const cloudName = sanitizeDisplayName(data.displayName) || sanitizeDisplayName(user.displayName);
+          const cloudName =
+            sanitizeDisplayName(data.displayName) || sanitizeDisplayName(user.displayName);
           const cloudAvatar = sanitizeAvatarUrl(data.avatarUrl);
           setCustomDisplayName(cloudName);
           setCustomAvatarUrl(cloudAvatar);
@@ -402,36 +414,216 @@ export default function App() {
                 updatedAt: serverTimestamp(),
               });
               if (cancelled) return;
+              totalMergedFromLocal += merged.addedFromSecondary;
             } catch (updateErr) {
               if (!cancelled) reportFirestoreFailure(updateErr, OperationType.UPDATE, docPath);
               return;
             }
-            if (justSignedInRef.current) {
-              showToast(
-                'success',
-                'Login & Gabung Progres Berhasil',
-                `${merged.addedFromSecondary} progres lokal digabungkan ke akun Anda.`
-              );
-              justSignedInRef.current = false;
-            }
-          } else if (justSignedInRef.current) {
-            showToast(
-              'success',
-              'Login Berhasil',
-              `Progres cloud dimuat: ${merged.mastered.size} hafal & ${merged.hard.size} sulit.`
-            );
-            justSignedInRef.current = false;
           }
 
           commitProgressTransaction(merged.mastered, merged.hard);
           setStoredOwnerUid(uid);
           setMastered(merged.mastered);
           setHardSet(merged.hard);
+          n4MasteredCount = merged.mastered.size;
+          n4HardCount = merged.hard.size;
         }
 
         if (cancelled) return;
 
-        unsubSnapshot = onSnapshot(
+        // Bootstrap & subscribe to all 3 Irodori books under /users/{uid}/irodoriProgress/{bookId}
+        let totalIrodoriMastered = 0;
+        let totalIrodoriHard = 0;
+
+        for (const bookId of IRODORI_BOOK_ORDER) {
+          if (cancelled) return;
+          const cfg = IRODORI_BOOKS[bookId];
+          const bookDocPath = `users/${uid}/irodoriProgress/${bookId}`;
+          const bookDocRef = doc(db, 'users', uid, 'irodoriProgress', bookId);
+
+          let bookSnap;
+          try {
+            bookSnap = await getDoc(bookDocRef);
+          } catch (bookGetErr) {
+            if (!cancelled) reportFirestoreFailure(bookGetErr, OperationType.GET, bookDocPath);
+            return;
+          }
+          if (cancelled) return;
+
+          const localBookM = canMergeLocal
+            ? irodoriProgressRef.current[bookId].mastered
+            : new Set<string>();
+          const localBookH = canMergeLocal
+            ? irodoriProgressRef.current[bookId].hard
+            : new Set<string>();
+
+          if (!bookSnap.exists()) {
+            irodoriCloudDocExistsRef.current[bookId] = false;
+            const cleanLocalBook = sanitizeIrodoriProgressLists(bookId, localBookM, localBookH);
+            const cleanLocalBookM = new Set(cleanLocalBook.mastered);
+            const cleanLocalBookH = new Set(cleanLocalBook.hard);
+
+            if (cleanLocalBookM.size > 0 || cleanLocalBookH.size > 0) {
+              const payload = buildIrodoriProgressWriteData(
+                uid,
+                bookId,
+                cleanLocalBookM,
+                cleanLocalBookH
+              );
+              try {
+                await setDoc(bookDocRef, {
+                  ...payload,
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp(),
+                });
+                if (cancelled) return;
+                irodoriCloudDocExistsRef.current[bookId] = true;
+                totalLocalSyncedOnCreate += cleanLocalBookM.size + cleanLocalBookH.size;
+              } catch (bookCreateErr) {
+                if (!cancelled) {
+                  reportFirestoreFailure(bookCreateErr, OperationType.CREATE, bookDocPath);
+                }
+                return;
+              }
+            }
+
+            commitScopedProgressTransaction(
+              cfg.lsKey,
+              cfg.hardKey,
+              cleanLocalBookM,
+              cleanLocalBookH
+            );
+            setIrodoriProgress(prev => ({
+              ...prev,
+              [bookId]: { mastered: cleanLocalBookM, hard: cleanLocalBookH },
+            }));
+            totalIrodoriMastered += cleanLocalBookM.size;
+            totalIrodoriHard += cleanLocalBookH.size;
+          } else {
+            irodoriCloudDocExistsRef.current[bookId] = true;
+            const bookData = bookSnap.data() as {
+              mastered?: unknown[];
+              hard?: unknown[];
+            };
+            const cleanCloudBook = sanitizeIrodoriProgressLists(
+              bookId,
+              Array.isArray(bookData.mastered) ? bookData.mastered : [],
+              Array.isArray(bookData.hard) ? bookData.hard : []
+            );
+            const cloudBookM = new Set(cleanCloudBook.mastered);
+            const cloudBookH = new Set(cleanCloudBook.hard);
+
+            const mergedBook = mergeIrodoriProgressSets(
+              bookId,
+              cloudBookM,
+              cloudBookH,
+              localBookM,
+              localBookH
+            );
+
+            if (mergedBook.addedFromSecondary > 0) {
+              const payload = buildIrodoriProgressWriteData(
+                uid,
+                bookId,
+                mergedBook.mastered,
+                mergedBook.hard
+              );
+              try {
+                await updateDoc(bookDocRef, {
+                  mastered: payload.mastered,
+                  hard: payload.hard,
+                  updatedAt: serverTimestamp(),
+                });
+                if (cancelled) return;
+                totalMergedFromLocal += mergedBook.addedFromSecondary;
+              } catch (bookUpdateErr) {
+                if (!cancelled) {
+                  reportFirestoreFailure(bookUpdateErr, OperationType.UPDATE, bookDocPath);
+                }
+                return;
+              }
+            }
+
+            commitScopedProgressTransaction(
+              cfg.lsKey,
+              cfg.hardKey,
+              mergedBook.mastered,
+              mergedBook.hard
+            );
+            setIrodoriProgress(prev => ({
+              ...prev,
+              [bookId]: { mastered: mergedBook.mastered, hard: mergedBook.hard },
+            }));
+            totalIrodoriMastered += mergedBook.mastered.size;
+            totalIrodoriHard += mergedBook.hard.size;
+          }
+
+          const unsubBook = onSnapshot(
+            bookDocRef,
+            docSnap => {
+              if (cancelled || !docSnap.exists()) return;
+              irodoriCloudDocExistsRef.current[bookId] = true;
+              const raw = docSnap.data() as {
+                mastered?: unknown[];
+                hard?: unknown[];
+              };
+              const clean = sanitizeIrodoriProgressLists(
+                bookId,
+                Array.isArray(raw.mastered) ? raw.mastered : [],
+                Array.isArray(raw.hard) ? raw.hard : []
+              );
+              const nextM = new Set(clean.mastered);
+              const nextH = new Set(clean.hard);
+              const cur = irodoriProgressRef.current[bookId];
+              if (!areSetsEqual(nextM, cur.mastered) || !areSetsEqual(nextH, cur.hard)) {
+                commitScopedProgressTransaction(cfg.lsKey, cfg.hardKey, nextM, nextH);
+                setStoredOwnerUid(uid);
+                setIrodoriProgress(prev => ({
+                  ...prev,
+                  [bookId]: { mastered: nextM, hard: nextH },
+                }));
+              }
+            },
+            snapErr => {
+              if (!cancelled) {
+                reportFirestoreFailure(snapErr, OperationType.GET, bookDocPath);
+              }
+            }
+          );
+          unsubSnapshots.push(unsubBook);
+        }
+
+        if (cancelled) return;
+
+        if (justSignedInRef.current) {
+          const totalMastered = n4MasteredCount + totalIrodoriMastered;
+          const totalHard = n4HardCount + totalIrodoriHard;
+          if (isNewCloudAccount) {
+            showToast(
+              'success',
+              'Login Berhasil',
+              totalLocalSyncedOnCreate > 0
+                ? `${totalLocalSyncedOnCreate} progres lokal (N4 & Irodori) disinkronkan ke akun Anda.`
+                : 'Akun terhubung. Progres N4 dan Irodori akan tersimpan otomatis ke cloud.'
+            );
+          } else if (totalMergedFromLocal > 0 || totalLocalSyncedOnCreate > 0) {
+            const addedCount = totalMergedFromLocal + totalLocalSyncedOnCreate;
+            showToast(
+              'success',
+              'Login & Gabung Progres Berhasil',
+              `${addedCount} progres lokal digabungkan ke akun Anda.`
+            );
+          } else {
+            showToast(
+              'success',
+              'Login Berhasil',
+              `Progres cloud dimuat: ${totalMastered} hafal & ${totalHard} sulit (N4 + Irodori).`
+            );
+          }
+          justSignedInRef.current = false;
+        }
+
+        const unsubUser = onSnapshot(
           userDocRef,
           docSnap => {
             if (cancelled || !docSnap.exists()) return;
@@ -469,6 +661,7 @@ export default function App() {
             }
           }
         );
+        unsubSnapshots.push(unsubUser);
       } catch (err) {
         if (!cancelled) {
           reportFirestoreFailure(err, OperationType.GET, docPath);
@@ -484,7 +677,7 @@ export default function App() {
 
     return () => {
       cancelled = true;
-      if (unsubSnapshot) unsubSnapshot();
+      unsubSnapshots.forEach(fn => fn());
     };
   }, [authReady, user, authVersion, reportFirestoreFailure, showToast]);
 
@@ -605,24 +798,70 @@ export default function App() {
     [reportFirestoreFailure]
   );
 
+  const syncIrodoriBookToCloud = useCallback(
+    async (
+      uid: string,
+      bookId: IrodoriBookId,
+      nextMastered: Set<string>,
+      nextHard: Set<string>
+    ) => {
+      const currentUser = auth.currentUser;
+      if (!currentUser || !currentUser.emailVerified) return;
+
+      // Ensure parent /users/{uid} exists first (required by Firestore Master Gate rule)
+      if (!cloudDocExistsRef.current) {
+        await syncProgressToCloud(uid, masteredRef.current, hardRef.current);
+        if (!cloudDocExistsRef.current) return;
+      }
+
+      const docPath = `users/${uid}/irodoriProgress/${bookId}`;
+      const bookDocRef = doc(db, 'users', uid, 'irodoriProgress', bookId);
+      const payload = buildIrodoriProgressWriteData(uid, bookId, nextMastered, nextHard);
+      const op = irodoriCloudDocExistsRef.current[bookId]
+        ? OperationType.UPDATE
+        : OperationType.CREATE;
+      try {
+        if (irodoriCloudDocExistsRef.current[bookId]) {
+          await updateDoc(bookDocRef, {
+            mastered: payload.mastered,
+            hard: payload.hard,
+            updatedAt: serverTimestamp(),
+          });
+        } else {
+          await setDoc(bookDocRef, {
+            ...payload,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+          irodoriCloudDocExistsRef.current[bookId] = true;
+        }
+      } catch (err) {
+        reportFirestoreFailure(err, op, docPath);
+      }
+    },
+    [reportFirestoreFailure, syncProgressToCloud]
+  );
+
   const applyProgressChange = useCallback(
     (nextMastered: Set<string>, nextHard: Set<string>): boolean => {
       if (datasetMode === 'irodori') {
         const cfg = IRODORI_BOOKS[irodoriBookId];
-        const cleanM = new Set([...nextMastered].filter(id => cfg.validIds.has(id)));
-        const cleanH = new Set(
-          [...nextHard].filter(id => cfg.validIds.has(id) && !cleanM.has(id))
-        );
-        const tx = commitScopedProgressTransaction(
-          cfg.lsKey,
-          cfg.hardKey,
-          cleanM,
-          cleanH
-        );
+        const clean = sanitizeIrodoriProgressLists(irodoriBookId, nextMastered, nextHard);
+        const cleanM = new Set(clean.mastered);
+        const cleanH = new Set(clean.hard);
+        const tx = commitScopedProgressTransaction(cfg.lsKey, cfg.hardKey, cleanM, cleanH);
         if (!tx.ok) {
           showToast('error', 'Penyimpanan Gagal', tx.error);
           return false;
         }
+
+        if (user) {
+          setStoredOwnerUid(user.uid);
+          if (user.emailVerified) {
+            void syncIrodoriBookToCloud(user.uid, irodoriBookId, cleanM, cleanH);
+          }
+        }
+
         setIrodoriProgress(prev => ({
           ...prev,
           [irodoriBookId]: { mastered: cleanM, hard: cleanH },
@@ -651,7 +890,7 @@ export default function App() {
       setHardSet(cleanH);
       return true;
     },
-    [datasetMode, irodoriBookId, showToast, user, syncProgressToCloud]
+    [datasetMode, irodoriBookId, showToast, user, syncProgressToCloud, syncIrodoriBookToCloud]
   );
 
   const clearAuthNotices = useCallback(() => {
@@ -839,11 +1078,31 @@ export default function App() {
     setSyncing(true);
     try {
       await syncProgressToCloud(current.uid, masteredRef.current, hardRef.current);
-      showToast('success', 'Sinkronisasi Selesai', 'Progres terbaru telah disimpan ke cloud.');
+      for (const bookId of IRODORI_BOOK_ORDER) {
+        const bookState = irodoriProgressRef.current[bookId];
+        const hasProgress = bookState.mastered.size > 0 || bookState.hard.size > 0;
+        const shouldSyncBook =
+          hasProgress ||
+          irodoriCloudDocExistsRef.current[bookId] ||
+          (datasetMode === 'irodori' && bookId === irodoriBookId);
+        if (shouldSyncBook) {
+          await syncIrodoriBookToCloud(
+            current.uid,
+            bookId,
+            bookState.mastered,
+            bookState.hard
+          );
+        }
+      }
+      showToast(
+        'success',
+        'Sinkronisasi Selesai',
+        'Progres JLPT N4 dan Irodori terbaru telah disimpan ke cloud.'
+      );
     } finally {
       setSyncing(false);
     }
-  }, [syncing, syncProgressToCloud, showToast]);
+  }, [syncing, syncProgressToCloud, syncIrodoriBookToCloud, datasetMode, irodoriBookId, showToast]);
 
   const handleSaveProfile = useCallback(
     async (nextName: string, nextAvatarUrl: string): Promise<boolean> => {
@@ -920,6 +1179,7 @@ export default function App() {
     try {
       await signOut(auth);
       cloudDocExistsRef.current = false;
+      irodoriCloudDocExistsRef.current = { pemula: false, dasar1: false, dasar2: false };
       justSignedInRef.current = false;
       setCustomDisplayName('');
       setCustomAvatarUrl('');
@@ -928,18 +1188,23 @@ export default function App() {
       const emptyH = new Set<string>();
       setMastered(emptyM);
       setHardSet(emptyH);
+      setIrodoriProgress({
+        pemula: { mastered: new Set<string>(), hard: new Set<string>() },
+        dasar1: { mastered: new Set<string>(), hard: new Set<string>() },
+        dasar2: { mastered: new Set<string>(), hard: new Set<string>() },
+      });
       const nextPool = computeCardPool(
         levelFilter,
         hideMastered,
         hardMode,
-        datasetMode === 'irodori' ? activeIrodoriProgress.mastered : emptyM,
-        datasetMode === 'irodori' ? activeIrodoriProgress.hard : emptyH
+        emptyM,
+        emptyH
       );
       rebuildOrder(nextPool, shuffleOn);
       showToast(
         'info',
         'Berhasil Keluar',
-        'Progres Anda tetap tersimpan aman di akun Anda.'
+        'Progres N4 dan Irodori Anda tetap tersimpan aman di akun Anda.'
       );
     } catch (err) {
       showToast(
@@ -956,8 +1221,6 @@ export default function App() {
     levelFilter,
     hideMastered,
     hardMode,
-    datasetMode,
-    activeIrodoriProgress,
     rebuildOrder,
     shuffleOn,
     showToast,
@@ -1610,7 +1873,9 @@ export default function App() {
         <footer className="border-t border-slate-200 bg-white/70 py-5 px-4 text-center text-xs text-slate-500">
           {datasetMode === 'irodori'
             ? activeIrodoriBook.data.length > 0
-              ? `${activeIrodoriBook.data.length} kosakata & kanji ${activeIrodoriBook.label} (Bab 1–18) · progres tersimpan lokal di perangkat ini`
+              ? user
+                ? `${activeIrodoriBook.data.length} kosakata & kanji ${activeIrodoriBook.label} (Bab 1–18) · akun ${effectiveDisplayName || user.email || 'terhubung'}${user.emailVerified ? ' (cloud aktif)' : ' (menunggu verifikasi email)'}`
+                : `${activeIrodoriBook.data.length} kosakata & kanji ${activeIrodoriBook.label} (Bab 1–18) · tersimpan lokal (masuk untuk sinkronisasi cloud)`
               : `${activeIrodoriBook.label} · belum ada data materi`
             : user
               ? `500 kosakata kanji JLPT N4 · hingga 2.500 variasi soal kuis · akun ${effectiveDisplayName || user.email || 'terhubung'}${user.emailVerified ? ' (cloud aktif)' : ' (menunggu verifikasi email)'}`

@@ -29,6 +29,15 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps --no-audit --no-fund
 
+      - name: Type-check TypeScript
+        run: npm run lint
+
+      - name: Lint Firestore Security Rules
+        run: npm run lint:rules
+
+      - name: Run unit & security test suite
+        run: npm test
+
       - name: Build production bundle
         env:
           VITE_BASE_PATH: /kanji-n4-plus-plus/

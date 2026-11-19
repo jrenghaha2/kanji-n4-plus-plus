@@ -82,6 +82,12 @@ export function clearStoredProgress(
   try {
     storage.removeItem(LS_KEY);
     storage.removeItem(HARD_KEY);
+    storage.removeItem(IRODORI_PEMULA_LS_KEY);
+    storage.removeItem(IRODORI_PEMULA_HARD_KEY);
+    storage.removeItem(IRODORI_LS_KEY);
+    storage.removeItem(IRODORI_HARD_KEY);
+    storage.removeItem(IRODORI_DASAR2_LS_KEY);
+    storage.removeItem(IRODORI_DASAR2_HARD_KEY);
     storage.removeItem(OWNER_UID_KEY);
   } catch {
     // Ignore storage lock errors

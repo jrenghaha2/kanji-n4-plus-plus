@@ -10,11 +10,14 @@ import {
   XCircle,
 } from 'lucide-react';
 import { IRODORI_BOOKS } from '../data/irodoriBooks';
+import { IRODORI_CHAPTER_NUMBERS } from '../data/irodoriShared';
 import { KANJI, LEVELS } from '../data/kanjiData';
 import type {
   AppDatasetMode,
   IrodoriBookConfig,
   IrodoriChapterFilter,
+  IrodoriChapterNumber,
+  IrodoriChapterSelection,
   LevelFilter,
   QuizOption,
   QuizQuestion,
@@ -27,6 +30,7 @@ import {
   QTYPES,
   buildQuizSession,
   calculateQuizScore,
+  formatChapterSelectionLabel,
   getActiveTypeKeys,
   getPoolIndices,
 } from '../utils/quizEngine';
@@ -94,15 +98,35 @@ export function QuizPanel({
   modalOpen,
 }: QuizPanelProps) {
   const activeDataset = datasetMode === 'irodori' ? irodoriBook.data : KANJI;
-  const activeChapterFilter = datasetMode === 'irodori' ? chapterFilter : undefined;
   const historyStorageKey =
     datasetMode === 'irodori' ? irodoriBook.quizHistoryKey : QUIZ_HISTORY_KEY;
 
+  const [selectedChapters, setSelectedChapters] = useState<IrodoriChapterNumber[]>(() =>
+    chapterFilter === 'all' ? [...IRODORI_CHAPTER_NUMBERS] : [chapterFilter]
+  );
+
+  const chapterCounts = useMemo(() => {
+    const counts = {} as Record<IrodoriChapterNumber, number>;
+    for (const ch of IRODORI_CHAPTER_NUMBERS) counts[ch] = 0;
+    if (datasetMode === 'irodori') {
+      for (const item of irodoriBook.data) {
+        if (item.chapter !== undefined) {
+          counts[item.chapter] = (counts[item.chapter] ?? 0) + 1;
+        }
+      }
+    }
+    return counts;
+  }, [datasetMode, irodoriBook.data]);
+
+  const activeChapterFilter: IrodoriChapterSelection | undefined = useMemo(() => {
+    if (datasetMode !== 'irodori') return undefined;
+    if (selectedChapters.length === IRODORI_CHAPTER_NUMBERS.length) return 'all';
+    return selectedChapters;
+  }, [datasetMode, selectedChapters]);
+
   const activeScopeLabel =
     datasetMode === 'irodori'
-      ? chapterFilter === 'all'
-        ? 'Semua Bab (1–18)'
-        : irodoriBook.chapters[chapterFilter].label
+      ? formatChapterSelectionLabel(selectedChapters, IRODORI_CHAPTER_NUMBERS.length)
       : `Level ${LEVELS[levelFilter].label}`;
 
   const [stage, setStage] = useState<QuizStage>('setup');
@@ -146,13 +170,25 @@ export function QuizPanel({
     };
   }, []);
 
-  // Reset back to setup when dataset mode, book, level filter, or chapter filter changes
+  // Reset back to setup and sync chapter selection when dataset mode, book, level filter, or sidebar chapter filter changes
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
     setStage('setup');
     setLocked(false);
     setSelectedIdx(null);
+    setSelectedChapters(
+      chapterFilter === 'all' ? [...IRODORI_CHAPTER_NUMBERS] : [chapterFilter]
+    );
   }, [datasetMode, irodoriBook.id, levelFilter, chapterFilter]);
+
+  const toggleChapterSelection = useCallback((ch: IrodoriChapterNumber) => {
+    setSelectedChapters(prev => {
+      if (prev.includes(ch)) {
+        return prev.filter(item => item !== ch);
+      }
+      return [...prev, ch].sort((a, b) => a - b);
+    });
+  }, []);
 
   // Persist completed quiz session once when transitioning to result stage
   useEffect(() => {
@@ -519,6 +555,110 @@ export function QuizPanel({
             </p>
           </div>
 
+          {datasetMode === 'irodori' ? (
+            <div
+              id="quizChapterPicker"
+              className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-3"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-slate-900">
+                    Pilih Bab Materi Kuis
+                  </span>
+                  <span className="text-xs font-semibold text-indigo-700 font-mono-num">
+                    {selectedChapters.length}/{IRODORI_CHAPTER_NUMBERS.length} bab
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    id="btnQuizSelectAllChapters"
+                    onClick={() => setSelectedChapters([...IRODORI_CHAPTER_NUMBERS])}
+                    className={`min-h-[30px] px-2.5 py-1 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
+                      selectedChapters.length === IRODORI_CHAPTER_NUMBERS.length
+                        ? 'bg-indigo-600 border-indigo-600 text-white'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    Semua Bab
+                  </button>
+                  <button
+                    type="button"
+                    id="btnQuizSelectFirstHalf"
+                    onClick={() =>
+                      setSelectedChapters(
+                        IRODORI_CHAPTER_NUMBERS.filter(ch => ch <= 9)
+                      )
+                    }
+                    className="min-h-[30px] px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    Bab 1–9
+                  </button>
+                  <button
+                    type="button"
+                    id="btnQuizSelectSecondHalf"
+                    onClick={() =>
+                      setSelectedChapters(
+                        IRODORI_CHAPTER_NUMBERS.filter(ch => ch >= 10)
+                      )
+                    }
+                    className="min-h-[30px] px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    Bab 10–18
+                  </button>
+                  <button
+                    type="button"
+                    id="btnQuizClearChapters"
+                    onClick={() => setSelectedChapters([])}
+                    className="min-h-[30px] px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-slate-600 text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    Kosongkan
+                  </button>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-500">
+                Klik satu atau beberapa bab untuk menggabungkan materi kuis sesuai kebutuhan belajar.
+              </p>
+
+              <div
+                id="quizChapterGrid"
+                className="grid grid-cols-3 sm:grid-cols-6 gap-1.5"
+                role="group"
+                aria-label="Pilihan bab materi kuis"
+              >
+                {IRODORI_CHAPTER_NUMBERS.map(ch => {
+                  const isSelected = selectedChapters.includes(ch);
+                  const meta = irodoriBook.chapters[ch];
+                  const count = chapterCounts[ch] ?? 0;
+                  return (
+                    <button
+                      key={ch}
+                      type="button"
+                      aria-pressed={isSelected}
+                      title={`${meta.label}: ${meta.jpTitle} — ${meta.idTitle} (${count} kosakata)`}
+                      onClick={() => toggleChapterSelection(ch)}
+                      className={`min-h-[40px] px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center justify-between gap-1 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-600 ${
+                        isSelected
+                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-slate-300'
+                      }`}
+                    >
+                      <span>Bab {ch}</span>
+                      <span
+                        className={`text-[11px] font-mono-num ${
+                          isSelected ? 'text-indigo-100' : 'text-slate-400'
+                        }`}
+                      >
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5" id="quizTypeGrid">
             {QUIZ_TYPE_OPTIONS.map(opt => {
               const active = quizTypeChoice === opt.key;
@@ -601,6 +741,7 @@ export function QuizPanel({
               <button
                 type="button"
                 id="btnStartCustomQuiz"
+                disabled={totalBank === 0}
                 onClick={() => {
                   const parsed = parseInt(customCount, 10);
                   if (!parsed || parsed < 1) {
@@ -609,7 +750,7 @@ export function QuizPanel({
                   }
                   startQuiz(parsed);
                 }}
-                className="min-h-[44px] px-5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-900 text-sm font-bold cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-600"
+                className="min-h-[44px] px-5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-900 text-sm font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-indigo-600"
               >
                 Mulai
               </button>
@@ -617,7 +758,9 @@ export function QuizPanel({
 
             {totalBank === 0 ? (
               <p className="mt-2.5 text-xs font-medium text-amber-800">
-                Belum ada data kosakata pada bab ini untuk dijadikan kuis.
+                {datasetMode === 'irodori' && selectedChapters.length === 0
+                  ? 'Pilih minimal 1 bab di atas untuk memulai kuis.'
+                  : 'Belum ada data kosakata pada pilihan ini untuk dijadikan kuis.'}
               </p>
             ) : disabledPresets.length > 0 ? (
               <p className="mt-2.5 text-xs font-medium text-amber-800">
@@ -702,6 +845,15 @@ export function QuizPanel({
                   ? q.item.r
                   : q.exMeta?.maskedEx}
           </div>
+
+          {q.promptHint ? (
+            <p
+              id="quizPromptHint"
+              className="mt-2.5 inline-block rounded-lg bg-indigo-50 px-3 py-1 text-xs sm:text-sm font-semibold text-indigo-700"
+            >
+              {q.promptHint}
+            </p>
+          ) : null}
 
           {q.type === 'ex2k' ? (
             <p className="mt-3 text-sm sm:text-base text-slate-600 font-medium">{q.item.exi}</p>

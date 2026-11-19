@@ -65,6 +65,52 @@ export const NOUN_EXCEPTIONS = new Set<string>([
   'おしぼり',
   'かみそり',
   'おいそぎ',
+  'まちがい',
+  'ごめんなさい',
+  'に伴い',
+  'お願い',
+  'ふれあい',
+  'お見舞い',
+  '新築祝い',
+  'どちらでもない',
+  '国道沿い',
+  '住まい',
+  '着払い',
+  '元払い',
+  '新しく',
+  'しゃぶしゃぶ',
+  'しばらく',
+  'こういう',
+  '問題なく',
+  'ろうそく',
+  'ばんそうこう',
+  'とにかく',
+  '(どうぞ)よろしく',
+  '～ぐらい',
+  'ぐらい',
+  '～ずつ',
+  'ずつ',
+  'もう',
+  'ぼく',
+  'ぶどう',
+  'だいぶ',
+  'すごく',
+  'どれぐらい',
+  'どういう',
+  'もう1つ',
+  'いいにおい',
+  'かやく',
+  'こう',
+  'けっこう',
+  'うがい',
+  'いらっしゃい',
+  'あいさつ',
+  'とうとう',
+  '～ますように',
+  'ますように',
+  '～にしましょう',
+  'にしましょう',
+  '～はちょっと…',
 ]);
 
 /**
@@ -106,6 +152,26 @@ export const NA_ADJECTIVES = new Set<string>([
   '大変',
   'いまいち',
   '完全',
+  'いろいろ',
+  'まじめ',
+  '上手',
+  '下手',
+  '豊か',
+  '新鮮',
+  '満足',
+  'リーズナブル',
+  '地味',
+  '派手',
+  'カジュアル',
+  '不思議',
+  '嫌',
+  '伝統的',
+  '利用可能',
+  '有効',
+  'さまざま',
+  'コンパクト',
+  'パワフル',
+  'シンプル',
 ]);
 
 /**
@@ -211,6 +277,8 @@ export const GODAN_RU_EXCEPTIONS = new Set<string>([
   '混じる',
   '限る',
   '茂る',
+  '気に入る',
+  '使い切る',
 ]);
 
 /**
@@ -258,6 +326,7 @@ export const KNOWN_ICHIDAN_VERBS = new Set<string>([
   '乗り換える',
   '温める',
   '閉じる',
+  '煮る',
 ]);
 
 const I_MAP: Record<string, string> = {
@@ -296,14 +365,54 @@ const E_MAP: Record<string, string> = {
   る: 'れ',
 };
 
-const E_OR_I_KANA = 'えけげせてねべめれでぜいきぎしじちひびみり';
+const E_OR_I_KANA = 'えけげせてねべめれでぜいきぎしじちひびみにり';
 
-export function getWordMeta(item: Pick<KanjiEntry, 'k' | 'r'>): WordMeta {
-  const { k, r } = item;
-  if (NOUN_EXCEPTIONS.has(k) || k === '手洗い') {
+export function stripEdgeTildes(text: string): string {
+  return text.replace(/^[～〜~]+|[～〜~]+$/g, '');
+}
+
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Matches template expressions containing `～`/`〜`/`~`/`▲` (such as `～から来ました`,
+ * `第～▲曜日`, `全～回`, `～度～分`) against a Japanese example sentence.
+ */
+export function matchTemplateSurface(rawK: string, text: string): string | null {
+  if (!/[～〜~▲]/.test(rawK)) return null;
+  const edgeStripped = stripEdgeTildes(rawK);
+  if (edgeStripped && !/[～〜~▲]/.test(edgeStripped) && text.includes(edgeStripped)) {
+    return edgeStripped;
+  }
+
+  // Handle infix templates such as `第～▲曜日`, `全～回`, `～度～分`.
+  const hasLeadingTilde = /^[～〜~]/.test(rawK);
+  const body = stripEdgeTildes(rawK);
+  if (!body) return null;
+
+  const parts = body.split(/[～〜~▲]+/);
+  if (parts.length >= 2) {
+    const corePattern = parts.map(escapeRegExp).join('[^、。！？!?\\s「」（）()]{1,4}?');
+    const pattern = hasLeadingTilde ? `(?:[\\d０-９]+)?${corePattern}` : corePattern;
+    const match = text.match(new RegExp(pattern));
+    if (match?.[0]) return match[0];
+  }
+
+  return null;
+}
+
+export function getWordMeta(
+  item: Pick<KanjiEntry, 'k' | 'r'> & Partial<Pick<KanjiEntry, 'm' | 'ex'>>
+): WordMeta {
+  const rawK = item.k;
+  const k = stripEdgeTildes(rawK);
+  const r = stripEdgeTildes(item.r);
+
+  if (NOUN_EXCEPTIONS.has(rawK) || NOUN_EXCEPTIONS.has(k) || k === '手洗い') {
     return { pos: 'noun', subPos: 'noun' };
   }
-  if (NA_ADJECTIVES.has(k)) {
+  if (NA_ADJECTIVES.has(rawK) || NA_ADJECTIVES.has(k)) {
     return { pos: 'noun', subPos: 'naadj' };
   }
   if (k === 'する' || (k.endsWith('する') && k.length > 2)) {
@@ -312,11 +421,30 @@ export function getWordMeta(item: Pick<KanjiEntry, 'k' | 'r'>): WordMeta {
   if (k === '来る' || (k.endsWith('来る') && k.length > 2)) {
     return { pos: 'godan', subPos: 'verb' };
   }
+  if (
+    k.endsWith('ます') ||
+    k.endsWith('ません') ||
+    k.endsWith('ました') ||
+    k.endsWith('ましょう') ||
+    k.endsWith('ください') ||
+    k.endsWith('です') ||
+    k.endsWith('ですか？') ||
+    k.endsWith('ますか？') ||
+    k.endsWith('ように')
+  ) {
+    return { pos: 'noun', subPos: 'noun' };
+  }
+  if (k === 'いる') {
+    const isGodanNeed =
+      /\b(perlu|butuh|membutuhkan)\b/i.test(item.m ?? '') ||
+      /いりま|いらな/.test(item.ex ?? '');
+    if (isGodanNeed) {
+      return { pos: 'godan', subPos: 'verb' };
+    }
+    return { pos: 'ichidan', subPos: 'verb' };
+  }
   if (k.endsWith('い')) {
     return { pos: 'iadj', subPos: 'iadj' };
-  }
-  if (k.endsWith('ます') || k.endsWith('ません') || k.endsWith('ました') || k.endsWith('ください')) {
-    return { pos: 'noun', subPos: 'noun' };
   }
   if (KNOWN_ICHIDAN_VERBS.has(k)) {
     return { pos: 'ichidan', subPos: 'verb' };
@@ -336,9 +464,12 @@ export function getWordMeta(item: Pick<KanjiEntry, 'k' | 'r'>): WordMeta {
   return { pos: 'noun', subPos: 'noun' };
 }
 
-export function conjugateWord(item: Pick<KanjiEntry, 'k' | 'r'>, form: ConjugationForm): string {
+export function conjugateWord(
+  item: Pick<KanjiEntry, 'k' | 'r'> & Partial<Pick<KanjiEntry, 'm' | 'ex'>>,
+  form: ConjugationForm
+): string {
   const { pos } = getWordMeta(item);
-  const k = item.k;
+  const k = stripEdgeTildes(item.k);
 
   if (k === 'する' || (k.endsWith('する') && k.length > 2)) {
     const base = k.slice(0, -2);
@@ -355,10 +486,16 @@ export function conjugateWord(item: Pick<KanjiEntry, 'k' | 'r'>, form: Conjugati
         return base + 'しましょう';
       case 'te':
         return base + 'して';
+      case 'ta':
+        return base + 'した';
       case 'nai':
         return base + 'しない';
       case 'passive_mashita':
         return base + 'されました';
+      case 'passive_masu':
+        return base + 'されます';
+      case 'passive_te':
+        return base + 'されて';
       case 'potential_masen':
         return base + 'できません';
       case 'potential_masu':
@@ -383,6 +520,8 @@ export function conjugateWord(item: Pick<KanjiEntry, 'k' | 'r'>, form: Conjugati
         return base + '来ましょう';
       case 'te':
         return base + '来て';
+      case 'ta':
+        return base + '来た';
       case 'nai':
         return base + '来ない';
       default:
@@ -390,8 +529,9 @@ export function conjugateWord(item: Pick<KanjiEntry, 'k' | 'r'>, form: Conjugati
     }
   }
 
-  if (k === '行く' && form === 'te') {
-    return '行って';
+  if (k === '行く' || k.endsWith('行く') || k === 'うまくいく') {
+    if (form === 'te') return k.slice(0, -1) + 'って';
+    if (form === 'ta') return k.slice(0, -1) + 'った';
   }
 
   if (k === 'いい' || k === '気持ちいい' || k === 'かっこいい') {
@@ -418,10 +558,16 @@ export function conjugateWord(item: Pick<KanjiEntry, 'k' | 'r'>, form: Conjugati
         return stem + 'ましょう';
       case 'te':
         return stem + 'て';
+      case 'ta':
+        return stem + 'た';
       case 'nai':
         return stem + 'ない';
       case 'passive_mashita':
         return stem + 'られました';
+      case 'passive_masu':
+        return stem + 'られます';
+      case 'passive_te':
+        return stem + 'られて';
       case 'potential_masen':
         return stem + 'られません';
       case 'potential_masu':
@@ -451,6 +597,10 @@ export function conjugateWord(item: Pick<KanjiEntry, 'k' | 'r'>, form: Conjugati
         return aStem + 'ない';
       case 'passive_mashita':
         return aStem + 'れました';
+      case 'passive_masu':
+        return aStem + 'れます';
+      case 'passive_te':
+        return aStem + 'れて';
       case 'potential_masen':
         return eStem + 'ません';
       case 'potential_masu':
@@ -461,6 +611,13 @@ export function conjugateWord(item: Pick<KanjiEntry, 'k' | 'r'>, form: Conjugati
         if (last === 'く') return stem + 'いて';
         if (last === 'ぐ') return stem + 'いで';
         if (last === 'す') return stem + 'して';
+        return k;
+      case 'ta':
+        if ('うつる'.includes(last)) return stem + 'った';
+        if ('ぬぶむ'.includes(last)) return stem + 'んだ';
+        if (last === 'く') return stem + 'いた';
+        if (last === 'ぐ') return stem + 'いだ';
+        if (last === 'す') return stem + 'した';
         return k;
       default:
         return k;
@@ -478,6 +635,8 @@ export function conjugateWord(item: Pick<KanjiEntry, 'k' | 'r'>, form: Conjugati
 
 const VERB_CONJUGATION_ORDER: ConjugationForm[] = [
   'passive_mashita',
+  'passive_masu',
+  'passive_te',
   'potential_masen',
   'potential_masu',
   'mashita',
@@ -485,6 +644,7 @@ const VERB_CONJUGATION_ORDER: ConjugationForm[] = [
   'mashou',
   'masu',
   'te',
+  'ta',
   'nai',
   'masu_stem',
   'dict',
@@ -500,13 +660,17 @@ function replaceAllOccurrences(text: string, needle: string, replacement: string
 export function analyzeSentenceBlank(item: KanjiEntry): SentenceBlank {
   const { pos, subPos } = getWordMeta(item);
   const ex = item.ex;
+  const cleanK = stripEdgeTildes(item.k);
 
-  if (pos === 'ichidan' || pos === 'godan' || item.k.endsWith('する')) {
+  if (pos === 'ichidan' || pos === 'godan' || cleanK.endsWith('する')) {
     const blankContext: BlankContextKind =
-      item.k.endsWith('する') ? 'suru_verb' : 'verb_conjugated';
+      cleanK.endsWith('する') ? 'suru_verb' : 'verb_conjugated';
     for (const form of VERB_CONJUGATION_ORDER) {
       const surface = conjugateWord(item, form);
-      if (ex.includes(surface)) {
+      if (form === 'masu_stem' && surface.length === 1 && /[ぁ-ん]/.test(surface)) {
+        continue;
+      }
+      if (surface && ex.includes(surface)) {
         return {
           maskedEx: replaceAllOccurrences(ex, surface, '（　　）'),
           targetSurface: surface,
@@ -519,7 +683,7 @@ export function analyzeSentenceBlank(item: KanjiEntry): SentenceBlank {
   } else if (pos === 'iadj') {
     for (const form of IADJ_CONJUGATION_ORDER) {
       const surface = conjugateWord(item, form);
-      if (ex.includes(surface)) {
+      if (surface && ex.includes(surface)) {
         return {
           maskedEx: replaceAllOccurrences(ex, surface, '（　　）'),
           targetSurface: surface,
@@ -540,6 +704,13 @@ export function analyzeSentenceBlank(item: KanjiEntry): SentenceBlank {
       targetSurface = expanded;
     } else if (shortened && ex.includes(shortened)) {
       targetSurface = shortened;
+    }
+  }
+
+  if (!ex.includes(targetSurface) && /[～〜~▲]/.test(item.k)) {
+    const matched = matchTemplateSurface(item.k, ex);
+    if (matched) {
+      targetSurface = matched;
     }
   }
 
