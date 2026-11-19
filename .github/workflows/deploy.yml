@@ -53,13 +53,14 @@ jobs:
       - name: Run Firestore Rules Emulator integration tests
         run: npm run test:rules:emulator
 
+      - name: Setup Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
       - name: Build production bundle
         env:
-          VITE_BASE_PATH: /kanji-n4-plus-plus/
+          VITE_BASE_PATH: ${{ steps.pages.outputs.base_path }}/
         run: npm run build
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

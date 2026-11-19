@@ -61,7 +61,7 @@ export function QuizSetupView({
   performancePanel,
 }: QuizSetupViewProps) {
   return (
-    <section aria-label="Pengaturan Kuis ABC" className="max-w-3xl space-y-6">
+    <section aria-label="Pengaturan Kuis Pilihan Ganda" className="max-w-3xl space-y-6">
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 sm:p-7 space-y-5">
         <div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50 flex items-center gap-2">
@@ -69,7 +69,7 @@ export function QuizSetupView({
             <span>
               {datasetMode === 'irodori'
                 ? `Kuis Kotoba & Kanji ${irodoriBook.label}`
-                : 'Kuis ABC Multi-Model'}
+                : 'Kuis Pilihan Ganda Multi-Model'}
             </span>
           </h2>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">

@@ -1,4 +1,4 @@
-# N4 Kanji — Flashcard, Kuis ABC & Seri Buku Irodori
+# N4 Kanji - Flashcard & Kuis Pilihan Ganda
 
 Aplikasi belajar bahasa Jepang berbasis React + TypeScript + Tailwind CSS + Firebase yang menggabungkan **500 kosakata kanji JLPT N4** dan **3 buku lengkap JF Irodori** (*Pemula*, *Dasar 1*, dan *Dasar 2*) dengan sinkronisasi cloud real-time.
 
@@ -8,7 +8,7 @@ Aplikasi belajar bahasa Jepang berbasis React + TypeScript + Tailwind CSS + Fire
   - Pembagian level *Easy* (210), *Medium* (200), dan *Hard* (90).
   - Flashcard interaktif (pintasan keyboard `Spasi`, `←/→`, `H`, `S`, `A`), mode kartu sulit, acak, dan sembunyikan hafal.
   - Daftar kosakata lengkap dengan pencarian, filter level/status, dan pelafalan audio Jepang (Web Speech API).
-  - Kuis ABC 5 model (hingga 2.500 variasi soal dengan analisis morfologi, anti-ambiguitas sinonim, statistik performa, & riwayat jawaban per sesi).
+  - Kuis Pilihan Ganda 5 model (hingga 2.500 variasi soal dengan analisis morfologi, anti-ambiguitas sinonim, statistik performa, & riwayat jawaban per sesi).
 - **Seri Buku JF Irodori (100% Utuh, Bab 1–18)**
   - **Irodori Pemula (A1)**: 1.136 kosakata (`いろどり 入門`).
   - **Irodori Dasar 1 (A2)**: 1.067 kosakata (`いろどり 初級1`).
@@ -50,7 +50,7 @@ npm run build
 
 ## Deploy ke GitHub Pages
 
-Workflow `.github/workflows/deploy.yml` otomatis menjalankan `npm run lint`, `npm run lint:rules`, `npm test`, lalu membangun bundle produksi dengan `VITE_BASE_PATH=/kanji-n4-plus-plus/` setiap kali push ke branch `main`.
+Workflow `.github/workflows/deploy.yml` otomatis menjalankan `npm run lint`, `npm run lint:rules`, `npm test`, `npm run test:rules:emulator`, lalu membangun bundle produksi dengan `VITE_BASE_PATH` yang otomatis mengikuti nama repositori GitHub Pages Anda setiap kali push ke branch `main`.
 
 > **Catatan Firebase Auth untuk GitHub Pages:**
 > Pastikan domain GitHub Pages Anda (mis. `<username>.github.io`) sudah ditambahkan ke daftar **Authorized domains** di Firebase Console (`Authentication → Settings → Authorized domains`) agar login Google/GitHub berjalan lancar di URL produksi.
