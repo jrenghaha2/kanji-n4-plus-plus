@@ -11,7 +11,7 @@
     "lint": "tsc --noEmit",
     "lint:rules": "eslint firestore.rules",
     "test": "tsx --test src/utils/morphology.test.ts src/utils/quizEngine.test.ts src/utils/storage.test.ts src/utils/quizStats.test.ts src/utils/irodori.test.ts firestore.rules.test.ts",
-    "test:rules:emulator": "firebase emulators:exec --only firestore \"npx tsx --test firestore.emulator.test.ts\""
+    "test:rules:emulator": "npx --yes firebase-tools emulators:exec --only firestore --project demo-n4-kanji-rules-test \"npx tsx --test firestore.emulator.test.ts\""
   },
   "dependencies": {
     "@firebase/eslint-plugin-security-rules": "^0.0.2",

@@ -1,16 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  createUserWithEmailAndPassword,
-  onAuthStateChanged,
-  sendEmailVerification,
-  sendPasswordResetEmail,
-  signInWithEmailAndPassword,
-  signInWithPopup,
-  signOut,
-  updateProfile,
-  type User,
-} from 'firebase/auth';
-import { doc, getDoc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppHeader } from './components/AppHeader';
 import { AuthModal } from './components/AuthModal';
 import { FlashcardPanel } from './components/FlashcardPanel';
@@ -18,23 +6,16 @@ import { IrodoriBookMenu } from './components/IrodoriBookMenu';
 import { IrodoriEmptyState } from './components/IrodoriEmptyState';
 import { KanjiListPanel } from './components/KanjiListPanel';
 import { ProfileModal } from './components/ProfileModal';
-import { QuizPanel, type RecordQuizSessionInput } from './components/QuizPanel';
-import { RestoreModal, type PendingRestoreState } from './components/RestoreModal';
+import { QuizPanel } from './components/QuizPanel';
+import { RestoreModal } from './components/RestoreModal';
 import { Sidebar } from './components/Sidebar';
 import { ToastBanner } from './components/ToastBanner';
-import { IRODORI_BOOKS, IRODORI_BOOK_ORDER } from './data/irodoriBooks';
+import { IRODORI_BOOKS } from './data/irodoriBooks';
 import { KANJI, VALID_KANJI_IDS } from './data/kanjiData';
-import {
-  OperationType,
-  auth,
-  createGoogleAccountPickerProvider,
-  db,
-  getFirestoreUpgradeUrl,
-  githubProvider,
-  googleProvider,
-  handleFirestoreError,
-  isFirestoreQuotaError,
-} from './firebase';
+import { useAuthActions } from './hooks/useAuthActions';
+import { useBackupRestore } from './hooks/useBackupRestore';
+import { useCloudProgressSync } from './hooks/useCloudProgressSync';
+import { useToast } from './hooks/useToast';
 import type {
   AppDatasetMode,
   AppTab,
@@ -42,136 +23,10 @@ import type {
   IrodoriChapterFilter,
   KanjiEntry,
   LevelFilter,
-  QuizDatasetId,
-  QuizSessionHistoryEntry,
-  ToastMessage,
 } from './types/kanji';
-import {
-  areSetsEqual,
-  buildIrodoriProgressWriteData,
-  buildUserProfileWriteData,
-  buildUserProgressWriteData,
-  markKanjiHard,
-  markKanjiMastered,
-  mergeIrodoriProgressSets,
-  mergeProgressSets,
-  sanitizeAvatarUrl,
-  sanitizeDisplayName,
-  sanitizeIrodoriProgressLists,
-  sanitizeProgressLists,
-} from './utils/progressSync';
+import { markKanjiHard, markKanjiMastered } from './utils/progressSync';
 import { getPoolIndices, shuffled } from './utils/quizEngine';
-import {
-  QUIZ_DATASET_IDS,
-  areQuizHistoriesEqual,
-  buildQuizHistoryWriteData,
-  decodeQuizHistoryFromCloud,
-  mergeQuizHistories,
-} from './utils/quizHistorySync';
-import {
-  QUIZ_HISTORY_KEYS_BY_DATASET,
-  clearQuizHistory,
-  loadQuizHistory,
-  recordQuizSession,
-  saveQuizHistory,
-} from './utils/quizStats';
-import {
-  HARD_KEY,
-  LS_KEY,
-  buildBackupPayload,
-  clearStoredProgress,
-  commitProgressTransaction,
-  commitScopedProgressTransaction,
-  getStoredOwnerUid,
-  safeLoadSet,
-  setStoredOwnerUid,
-  validateAndParseBackup,
-} from './utils/storage';
 import { speakJP } from './utils/tts';
-
-function mapFirebaseAuthError(err: unknown): {
-  code: string;
-  message: string;
-  showConsoleHint: boolean;
-} {
-  const code =
-    typeof err === 'object' && err !== null && 'code' in err
-      ? String((err as { code: unknown }).code)
-      : '';
-
-  switch (code) {
-    case 'auth/popup-closed-by-user':
-    case 'auth/cancelled-popup-request':
-      return {
-        code,
-        message: 'Jendela login ditutup sebelum selesai.',
-        showConsoleHint: false,
-      };
-    case 'auth/popup-blocked':
-      return {
-        code,
-        message: 'Popup diblokir browser. Izinkan popup untuk situs ini lalu coba lagi.',
-        showConsoleHint: false,
-      };
-    case 'auth/operation-not-allowed':
-      return {
-        code,
-        message: 'Metode login ini belum diaktifkan di Firebase Console.',
-        showConsoleHint: true,
-      };
-    case 'auth/account-exists-with-different-credential':
-      return {
-        code,
-        message:
-          'Email ini sudah terdaftar dengan metode login lain. Gunakan metode login sebelumnya.',
-        showConsoleHint: false,
-      };
-    case 'auth/invalid-credential':
-    case 'auth/wrong-password':
-    case 'auth/user-not-found':
-      return {
-        code,
-        message: 'Email atau kata sandi tidak cocok.',
-        showConsoleHint: false,
-      };
-    case 'auth/email-already-in-use':
-      return {
-        code,
-        message: 'Email ini sudah terdaftar. Silakan masuk pada tab Masuk.',
-        showConsoleHint: false,
-      };
-    case 'auth/weak-password':
-      return {
-        code,
-        message: 'Kata sandi terlalu lemah (gunakan minimal 6 karakter).',
-        showConsoleHint: false,
-      };
-    case 'auth/invalid-email':
-      return {
-        code,
-        message: 'Format alamat email tidak valid.',
-        showConsoleHint: false,
-      };
-    case 'auth/too-many-requests':
-      return {
-        code,
-        message: 'Terlalu banyak percobaan. Tunggu beberapa saat sebelum mencoba lagi.',
-        showConsoleHint: false,
-      };
-    case 'auth/network-request-failed':
-      return {
-        code,
-        message: 'Koneksi internet bermasalah. Periksa jaringan Anda lalu coba lagi.',
-        showConsoleHint: false,
-      };
-    default:
-      return {
-        code,
-        message: err instanceof Error ? err.message : 'Gagal memproses autentikasi.',
-        showConsoleHint: false,
-      };
-  }
-}
 
 export default function App() {
   const [datasetMode, setDatasetMode] = useState<AppDatasetMode>('n4');
@@ -179,61 +34,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<AppTab>('card');
   const [levelFilter, setLevelFilter] = useState<LevelFilter>('all');
   const [chapterFilter, setChapterFilter] = useState<IrodoriChapterFilter>('all');
-
-  const [mastered, setMastered] = useState<Set<string>>(() => safeLoadSet(LS_KEY));
-  const [hardSet, setHardSet] = useState<Set<string>>(() => {
-    const m = safeLoadSet(LS_KEY);
-    const h = safeLoadSet(HARD_KEY);
-    m.forEach(id => h.delete(id));
-    return h;
-  });
-
-  const [irodoriProgress, setIrodoriProgress] = useState<
-    Record<IrodoriBookId, { mastered: Set<string>; hard: Set<string> }>
-  >(() => {
-    const initial = {} as Record<
-      IrodoriBookId,
-      { mastered: Set<string>; hard: Set<string> }
-    >;
-    for (const bookId of IRODORI_BOOK_ORDER) {
-      const cfg = IRODORI_BOOKS[bookId];
-      const m = safeLoadSet(cfg.lsKey, cfg.validIds);
-      const h = safeLoadSet(cfg.hardKey, cfg.validIds);
-      m.forEach(id => h.delete(id));
-      initial[bookId] = { mastered: m, hard: h };
-    }
-    return initial;
-  });
-
-  const [quizHistories, setQuizHistories] = useState<
-    Record<QuizDatasetId, QuizSessionHistoryEntry[]>
-  >(() => ({
-    n4: loadQuizHistory(undefined, QUIZ_HISTORY_KEYS_BY_DATASET.n4),
-    pemula: loadQuizHistory(undefined, QUIZ_HISTORY_KEYS_BY_DATASET.pemula),
-    dasar1: loadQuizHistory(undefined, QUIZ_HISTORY_KEYS_BY_DATASET.dasar1),
-    dasar2: loadQuizHistory(undefined, QUIZ_HISTORY_KEYS_BY_DATASET.dasar2),
-  }));
-  const [cloudReadyUid, setCloudReadyUid] = useState<string | null>(null);
-  const [quizHistorySyncing, setQuizHistorySyncing] = useState(false);
-
-  const [user, setUser] = useState<User | null>(null);
-  const [authVersion, setAuthVersion] = useState(0);
-  const [authReady, setAuthReady] = useState(false);
-  const [authBusy, setAuthBusy] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [fatalError, setFatalError] = useState<Error | null>(null);
-
-  const [customDisplayName, setCustomDisplayName] = useState('');
-  const [customAvatarUrl, setCustomAvatarUrl] = useState('');
-
-  const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [authSwitchMode, setAuthSwitchMode] = useState(false);
-  const [authErrorText, setAuthErrorText] = useState<string | null>(null);
-  const [authInfoText, setAuthInfoText] = useState<string | null>(null);
-  const [authConsoleHint, setAuthConsoleHint] = useState(false);
-
-  const [profileModalOpen, setProfileModalOpen] = useState(false);
-  const [profileSaving, setProfileSaving] = useState(false);
 
   const [hardMode, setHardMode] = useState(false);
   const [shuffleOn, setShuffleOn] = useState(false);
@@ -245,515 +45,68 @@ export default function App() {
   const [sessionHard, setSessionHard] = useState<Set<number>>(() => new Set());
   const [sessionNewMaster, setSessionNewMaster] = useState(0);
 
-  const [pendingRestore, setPendingRestore] = useState<PendingRestoreState | null>(null);
-  const [toast, setToast] = useState<ToastMessage | null>(null);
+  const { toast, showToast, dismissToast } = useToast();
 
-  const restoreBtnRef = useRef<HTMLButtonElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const toastCounterRef = useRef(0);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const {
+    user,
+    authVersion,
+    authReady,
+    authBusy,
+    authModalOpen,
+    setAuthModalOpen,
+    authSwitchMode,
+    authErrorText,
+    authInfoText,
+    authConsoleHint,
+    justSignedInRef,
+    bumpAuthVersion,
+    clearAuthNotices,
+    handleOpenAuthModal,
+    handleGoogleLogin,
+    handleGithubLogin,
+    handleEmailSignIn,
+    handleEmailSignUp,
+    handleEmailReset,
+    handleResendVerification,
+    handleRefreshVerification,
+    executeSignOut,
+  } = useAuthActions({ showToast });
 
-  const masteredRef = useRef(mastered);
-  masteredRef.current = mastered;
-  const hardRef = useRef(hardSet);
-  hardRef.current = hardSet;
-  const irodoriProgressRef = useRef(irodoriProgress);
-  irodoriProgressRef.current = irodoriProgress;
-  const quizHistoriesRef = useRef(quizHistories);
-  quizHistoriesRef.current = quizHistories;
-  const customNameRef = useRef(customDisplayName);
-  customNameRef.current = customDisplayName;
-  const customAvatarRef = useRef(customAvatarUrl);
-  customAvatarRef.current = customAvatarUrl;
-  const cloudDocExistsRef = useRef(false);
-  const irodoriCloudDocExistsRef = useRef<Record<IrodoriBookId, boolean>>({
-    pemula: false,
-    dasar1: false,
-    dasar2: false,
+  const {
+    mastered,
+    hardSet,
+    irodoriProgress,
+    quizHistories,
+    activeQuizDatasetId,
+    syncing,
+    quizHistorySyncing,
+    fatalError,
+    customDisplayName,
+    customAvatarUrl,
+    profileModalOpen,
+    setProfileModalOpen,
+    profileSaving,
+    applyProgressChange,
+    handleRecordQuizSession,
+    handleClearQuizHistory,
+    handleManualSync,
+    handleSaveProfile,
+    resetCloudAndLocalProgress,
+  } = useCloudProgressSync({
+    user,
+    authReady,
+    authVersion,
+    justSignedInRef,
+    activeTab,
+    datasetMode,
+    irodoriBookId,
+    bumpAuthVersion,
+    showToast,
   });
-  const quizHistoryCloudExistsRef = useRef<Record<QuizDatasetId, boolean>>({
-    n4: false,
-    pemula: false,
-    dasar1: false,
-    dasar2: false,
-  });
-  const quizHistoryLoadedRef = useRef<Record<QuizDatasetId, boolean>>({
-    n4: false,
-    pemula: false,
-    dasar1: false,
-    dasar2: false,
-  });
-  const quizHistoryLoadingRef = useRef<Record<QuizDatasetId, boolean>>({
-    n4: false,
-    pemula: false,
-    dasar1: false,
-    dasar2: false,
-  });
-  const quizHistoryCanMergeLocalRef = useRef(true);
-  const justSignedInRef = useRef(false);
 
   if (fatalError) {
     throw fatalError;
   }
-
-  const showToast = useCallback(
-    (tone: ToastMessage['tone'], title: string, detail?: string) => {
-      toastCounterRef.current += 1;
-      const id = toastCounterRef.current;
-      setToast({ id, tone, title, detail });
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-      toastTimerRef.current = setTimeout(() => {
-        setToast(prev => (prev?.id === id ? null : prev));
-      }, 6500);
-    },
-    []
-  );
-
-  useEffect(() => {
-    return () => {
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    };
-  }, []);
-
-  const reportFirestoreFailure = useCallback(
-    (err: unknown, op: OperationType, path: string) => {
-      if (isFirestoreQuotaError(err)) {
-        const msg = err instanceof Error ? err.message : String(err);
-        const detail = msg.includes('Free daily read units per project')
-          ? `Kuota baca harian gratis Firestore habis. Upgrade database: ${getFirestoreUpgradeUrl()}`
-          : 'Kuota harian gratis Firestore tercapai dan akan direset besok. Progres tetap tersimpan di perangkat ini.';
-        showToast('warning', 'Batas Kuota Cloud Tercapai', detail);
-        return;
-      }
-
-      try {
-        handleFirestoreError(err, op, path);
-      } catch (wrapped) {
-        const errorObj = wrapped instanceof Error ? wrapped : new Error(String(wrapped));
-        const raw = err instanceof Error ? err.message : String(err);
-        if (raw.includes('Missing or insufficient permissions') || raw.includes('permission-denied')) {
-          setFatalError(errorObj);
-        } else {
-          showToast(
-            'warning',
-            'Sinkronisasi Cloud Tertunda',
-            'Progres tersimpan di perangkat ini. Perubahan akan tersinkronkan saat koneksi stabil.'
-          );
-        }
-      }
-    },
-    [showToast]
-  );
-
-  // Firebase Auth listener
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, currentUser => {
-      setUser(currentUser);
-      if (currentUser) {
-        setPendingRestore(null);
-      }
-      setAuthVersion(v => v + 1);
-      setAuthReady(true);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  // Firestore initial sync + real-time listeners (N4 + all 3 Irodori books)
-  useEffect(() => {
-    if (!authReady || !user) {
-      cloudDocExistsRef.current = false;
-      irodoriCloudDocExistsRef.current = { pemula: false, dasar1: false, dasar2: false };
-      quizHistoryCloudExistsRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
-      quizHistoryLoadedRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
-      quizHistoryLoadingRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
-      quizHistoryCanMergeLocalRef.current = true;
-      setCloudReadyUid(null);
-      setCustomDisplayName('');
-      setCustomAvatarUrl('');
-      setSyncing(false);
-      return;
-    }
-
-    const uid = user.uid;
-    if (!user.emailVerified) {
-      cloudDocExistsRef.current = false;
-      irodoriCloudDocExistsRef.current = { pemula: false, dasar1: false, dasar2: false };
-      quizHistoryCloudExistsRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
-      quizHistoryLoadedRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
-      quizHistoryLoadingRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
-      setCloudReadyUid(null);
-      setStoredOwnerUid(uid);
-      setCustomDisplayName(sanitizeDisplayName(user.displayName));
-      setCustomAvatarUrl(sanitizeAvatarUrl(user.photoURL));
-      setSyncing(false);
-      return;
-    }
-
-    let cancelled = false;
-    const unsubSnapshots: Array<() => void> = [];
-    const docPath = `users/${uid}`;
-    const userDocRef = doc(db, 'users', uid);
-
-    quizHistoryCloudExistsRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
-    quizHistoryLoadedRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
-    quizHistoryLoadingRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
-
-    const bootstrapCloudSync = async () => {
-      setSyncing(true);
-      try {
-        const snap = await getDoc(userDocRef);
-        if (cancelled) return;
-
-        const storedOwner = getStoredOwnerUid();
-        const canMergeLocal = storedOwner === null || storedOwner === uid;
-        quizHistoryCanMergeLocalRef.current = canMergeLocal;
-        if (!canMergeLocal) {
-          for (const dsId of QUIZ_DATASET_IDS) {
-            clearQuizHistory(undefined, QUIZ_HISTORY_KEYS_BY_DATASET[dsId]);
-          }
-          setQuizHistories({ n4: [], pemula: [], dasar1: [], dasar2: [] });
-        }
-        const localM = canMergeLocal ? masteredRef.current : new Set<string>();
-        const localH = canMergeLocal ? hardRef.current : new Set<string>();
-
-        let isNewCloudAccount = false;
-        let n4MasteredCount = 0;
-        let n4HardCount = 0;
-        let totalMergedFromLocal = 0;
-        let totalLocalSyncedOnCreate = 0;
-
-        if (!snap.exists()) {
-          isNewCloudAccount = true;
-          cloudDocExistsRef.current = false;
-          const payload = buildUserProgressWriteData(uid, localM, localH);
-          const initialName = sanitizeDisplayName(customNameRef.current || user.displayName);
-          const initialAvatar = sanitizeAvatarUrl(customAvatarRef.current || user.photoURL);
-          try {
-            await setDoc(userDocRef, {
-              ...payload,
-              displayName: initialName,
-              avatarUrl: initialAvatar,
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-            });
-            if (cancelled) return;
-            cloudDocExistsRef.current = true;
-          } catch (writeErr) {
-            if (!cancelled) reportFirestoreFailure(writeErr, OperationType.CREATE, docPath);
-            return;
-          }
-
-          const cleanLocalM = new Set(payload.mastered);
-          const cleanLocalH = new Set(payload.hard);
-          commitProgressTransaction(cleanLocalM, cleanLocalH);
-          setStoredOwnerUid(uid);
-          setMastered(cleanLocalM);
-          setHardSet(cleanLocalH);
-          setCustomDisplayName(initialName);
-          setCustomAvatarUrl(initialAvatar);
-          n4MasteredCount = cleanLocalM.size;
-          n4HardCount = cleanLocalH.size;
-          totalLocalSyncedOnCreate += cleanLocalM.size + cleanLocalH.size;
-        } else {
-          cloudDocExistsRef.current = true;
-          const data = snap.data() as {
-            mastered?: unknown[];
-            hard?: unknown[];
-            displayName?: unknown;
-            avatarUrl?: unknown;
-          };
-          const cleanCloud = sanitizeProgressLists(
-            Array.isArray(data.mastered) ? data.mastered : [],
-            Array.isArray(data.hard) ? data.hard : []
-          );
-          const cloudMSet = new Set(cleanCloud.mastered);
-          const cloudHSet = new Set(cleanCloud.hard);
-
-          const cloudName =
-            sanitizeDisplayName(data.displayName) || sanitizeDisplayName(user.displayName);
-          const cloudAvatar = sanitizeAvatarUrl(data.avatarUrl);
-          setCustomDisplayName(cloudName);
-          setCustomAvatarUrl(cloudAvatar);
-
-          const merged = mergeProgressSets(cloudMSet, cloudHSet, localM, localH);
-          if (merged.addedFromSecondary > 0) {
-            const payload = buildUserProgressWriteData(uid, merged.mastered, merged.hard);
-            try {
-              await updateDoc(userDocRef, {
-                mastered: payload.mastered,
-                hard: payload.hard,
-                updatedAt: serverTimestamp(),
-              });
-              if (cancelled) return;
-              totalMergedFromLocal += merged.addedFromSecondary;
-            } catch (updateErr) {
-              if (!cancelled) reportFirestoreFailure(updateErr, OperationType.UPDATE, docPath);
-              return;
-            }
-          }
-
-          commitProgressTransaction(merged.mastered, merged.hard);
-          setStoredOwnerUid(uid);
-          setMastered(merged.mastered);
-          setHardSet(merged.hard);
-          n4MasteredCount = merged.mastered.size;
-          n4HardCount = merged.hard.size;
-        }
-
-        if (cancelled) return;
-
-        // Bootstrap & subscribe to all 3 Irodori books under /users/{uid}/irodoriProgress/{bookId}
-        let totalIrodoriMastered = 0;
-        let totalIrodoriHard = 0;
-
-        for (const bookId of IRODORI_BOOK_ORDER) {
-          if (cancelled) return;
-          const cfg = IRODORI_BOOKS[bookId];
-          const bookDocPath = `users/${uid}/irodoriProgress/${bookId}`;
-          const bookDocRef = doc(db, 'users', uid, 'irodoriProgress', bookId);
-
-          let bookSnap;
-          try {
-            bookSnap = await getDoc(bookDocRef);
-          } catch (bookGetErr) {
-            if (!cancelled) reportFirestoreFailure(bookGetErr, OperationType.GET, bookDocPath);
-            return;
-          }
-          if (cancelled) return;
-
-          const localBookM = canMergeLocal
-            ? irodoriProgressRef.current[bookId].mastered
-            : new Set<string>();
-          const localBookH = canMergeLocal
-            ? irodoriProgressRef.current[bookId].hard
-            : new Set<string>();
-
-          if (!bookSnap.exists()) {
-            irodoriCloudDocExistsRef.current[bookId] = false;
-            const cleanLocalBook = sanitizeIrodoriProgressLists(bookId, localBookM, localBookH);
-            const cleanLocalBookM = new Set(cleanLocalBook.mastered);
-            const cleanLocalBookH = new Set(cleanLocalBook.hard);
-
-            if (cleanLocalBookM.size > 0 || cleanLocalBookH.size > 0) {
-              const payload = buildIrodoriProgressWriteData(
-                uid,
-                bookId,
-                cleanLocalBookM,
-                cleanLocalBookH
-              );
-              try {
-                await setDoc(bookDocRef, {
-                  ...payload,
-                  createdAt: serverTimestamp(),
-                  updatedAt: serverTimestamp(),
-                });
-                if (cancelled) return;
-                irodoriCloudDocExistsRef.current[bookId] = true;
-                totalLocalSyncedOnCreate += cleanLocalBookM.size + cleanLocalBookH.size;
-              } catch (bookCreateErr) {
-                if (!cancelled) {
-                  reportFirestoreFailure(bookCreateErr, OperationType.CREATE, bookDocPath);
-                }
-                return;
-              }
-            }
-
-            commitScopedProgressTransaction(
-              cfg.lsKey,
-              cfg.hardKey,
-              cleanLocalBookM,
-              cleanLocalBookH
-            );
-            setIrodoriProgress(prev => ({
-              ...prev,
-              [bookId]: { mastered: cleanLocalBookM, hard: cleanLocalBookH },
-            }));
-            totalIrodoriMastered += cleanLocalBookM.size;
-            totalIrodoriHard += cleanLocalBookH.size;
-          } else {
-            irodoriCloudDocExistsRef.current[bookId] = true;
-            const bookData = bookSnap.data() as {
-              mastered?: unknown[];
-              hard?: unknown[];
-            };
-            const cleanCloudBook = sanitizeIrodoriProgressLists(
-              bookId,
-              Array.isArray(bookData.mastered) ? bookData.mastered : [],
-              Array.isArray(bookData.hard) ? bookData.hard : []
-            );
-            const cloudBookM = new Set(cleanCloudBook.mastered);
-            const cloudBookH = new Set(cleanCloudBook.hard);
-
-            const mergedBook = mergeIrodoriProgressSets(
-              bookId,
-              cloudBookM,
-              cloudBookH,
-              localBookM,
-              localBookH
-            );
-
-            if (mergedBook.addedFromSecondary > 0) {
-              const payload = buildIrodoriProgressWriteData(
-                uid,
-                bookId,
-                mergedBook.mastered,
-                mergedBook.hard
-              );
-              try {
-                await updateDoc(bookDocRef, {
-                  mastered: payload.mastered,
-                  hard: payload.hard,
-                  updatedAt: serverTimestamp(),
-                });
-                if (cancelled) return;
-                totalMergedFromLocal += mergedBook.addedFromSecondary;
-              } catch (bookUpdateErr) {
-                if (!cancelled) {
-                  reportFirestoreFailure(bookUpdateErr, OperationType.UPDATE, bookDocPath);
-                }
-                return;
-              }
-            }
-
-            commitScopedProgressTransaction(
-              cfg.lsKey,
-              cfg.hardKey,
-              mergedBook.mastered,
-              mergedBook.hard
-            );
-            setIrodoriProgress(prev => ({
-              ...prev,
-              [bookId]: { mastered: mergedBook.mastered, hard: mergedBook.hard },
-            }));
-            totalIrodoriMastered += mergedBook.mastered.size;
-            totalIrodoriHard += mergedBook.hard.size;
-          }
-
-          const unsubBook = onSnapshot(
-            bookDocRef,
-            docSnap => {
-              if (cancelled || !docSnap.exists()) return;
-              irodoriCloudDocExistsRef.current[bookId] = true;
-              const raw = docSnap.data() as {
-                mastered?: unknown[];
-                hard?: unknown[];
-              };
-              const clean = sanitizeIrodoriProgressLists(
-                bookId,
-                Array.isArray(raw.mastered) ? raw.mastered : [],
-                Array.isArray(raw.hard) ? raw.hard : []
-              );
-              const nextM = new Set(clean.mastered);
-              const nextH = new Set(clean.hard);
-              const cur = irodoriProgressRef.current[bookId];
-              if (!areSetsEqual(nextM, cur.mastered) || !areSetsEqual(nextH, cur.hard)) {
-                commitScopedProgressTransaction(cfg.lsKey, cfg.hardKey, nextM, nextH);
-                setStoredOwnerUid(uid);
-                setIrodoriProgress(prev => ({
-                  ...prev,
-                  [bookId]: { mastered: nextM, hard: nextH },
-                }));
-              }
-            },
-            snapErr => {
-              if (!cancelled) {
-                reportFirestoreFailure(snapErr, OperationType.GET, bookDocPath);
-              }
-            }
-          );
-          unsubSnapshots.push(unsubBook);
-        }
-
-        if (cancelled) return;
-
-        // Parent /users/{uid} is now guaranteed to exist; enable lazy quizHistory sync on demand
-        setCloudReadyUid(uid);
-
-        if (justSignedInRef.current) {
-          const totalMastered = n4MasteredCount + totalIrodoriMastered;
-          const totalHard = n4HardCount + totalIrodoriHard;
-          if (isNewCloudAccount) {
-            showToast(
-              'success',
-              'Login Berhasil',
-              totalLocalSyncedOnCreate > 0
-                ? `${totalLocalSyncedOnCreate} progres lokal (N4 & Irodori) disinkronkan ke akun Anda.`
-                : 'Akun terhubung. Progres N4 dan Irodori akan tersimpan otomatis ke cloud.'
-            );
-          } else if (totalMergedFromLocal > 0 || totalLocalSyncedOnCreate > 0) {
-            const addedCount = totalMergedFromLocal + totalLocalSyncedOnCreate;
-            showToast(
-              'success',
-              'Login & Gabung Progres Berhasil',
-              `${addedCount} progres lokal digabungkan ke akun Anda.`
-            );
-          } else {
-            showToast(
-              'success',
-              'Login Berhasil',
-              `Progres cloud dimuat: ${totalMastered} hafal & ${totalHard} sulit (N4 + Irodori).`
-            );
-          }
-          justSignedInRef.current = false;
-        }
-
-        const unsubUser = onSnapshot(
-          userDocRef,
-          docSnap => {
-            if (cancelled || !docSnap.exists()) return;
-            cloudDocExistsRef.current = true;
-            const raw = docSnap.data() as {
-              mastered?: unknown[];
-              hard?: unknown[];
-              displayName?: unknown;
-              avatarUrl?: unknown;
-            };
-            const clean = sanitizeProgressLists(
-              Array.isArray(raw.mastered) ? raw.mastered : [],
-              Array.isArray(raw.hard) ? raw.hard : []
-            );
-            const nextM = new Set(clean.mastered);
-            const nextH = new Set(clean.hard);
-            if (!areSetsEqual(nextM, masteredRef.current) || !areSetsEqual(nextH, hardRef.current)) {
-              commitProgressTransaction(nextM, nextH);
-              setStoredOwnerUid(uid);
-              setMastered(nextM);
-              setHardSet(nextH);
-            }
-            const nextName = sanitizeDisplayName(raw.displayName);
-            const nextAvatar = sanitizeAvatarUrl(raw.avatarUrl);
-            if (nextName && nextName !== customNameRef.current) {
-              setCustomDisplayName(nextName);
-            }
-            if (nextAvatar !== customAvatarRef.current) {
-              setCustomAvatarUrl(nextAvatar);
-            }
-          },
-          snapErr => {
-            if (!cancelled) {
-              reportFirestoreFailure(snapErr, OperationType.GET, docPath);
-            }
-          }
-        );
-        unsubSnapshots.push(unsubUser);
-      } catch (err) {
-        if (!cancelled) {
-          reportFirestoreFailure(err, OperationType.GET, docPath);
-        }
-      } finally {
-        if (!cancelled) {
-          setSyncing(false);
-        }
-      }
-    };
-
-    void bootstrapCloudSync();
-
-    return () => {
-      cancelled = true;
-      unsubSnapshots.forEach(fn => fn());
-    };
-  }, [authReady, user, authVersion, reportFirestoreFailure, showToast]);
 
   const activeIrodoriBook = IRODORI_BOOKS[irodoriBookId];
   const activeIrodoriProgress = irodoriProgress[irodoriBookId];
@@ -821,6 +174,43 @@ export default function App() {
     setSessionNewMaster(0);
   }, []);
 
+  const onRestoreCommitted = useCallback(
+    (nextMastered: Set<string>, nextHard: Set<string>) => {
+      const nextPool = computeCardPool(levelFilter, hideMastered, hardMode, nextMastered, nextHard);
+      rebuildOrder(nextPool, shuffleOn);
+    },
+    [computeCardPool, levelFilter, hideMastered, hardMode, rebuildOrder, shuffleOn]
+  );
+
+  const {
+    pendingRestore,
+    clearPendingRestore,
+    restoreBtnRef,
+    fileInputRef,
+    restorePreviews,
+    handleExport,
+    handleTriggerImport,
+    handleFileSelected,
+    handleCloseRestoreModal,
+    handleConfirmRestore,
+  } = useBackupRestore({
+    datasetMode,
+    irodoriBookId,
+    activeMastered,
+    activeHardSet,
+    activeValidIds,
+    applyProgressChange,
+    onRestoreCommitted,
+    showToast,
+    dismissToast,
+  });
+
+  useEffect(() => {
+    if (user) {
+      clearPendingRestore();
+    }
+  }, [user, clearPendingRestore]);
+
   const levelIndices = useMemo(
     () =>
       getPoolIndices(
@@ -839,640 +229,21 @@ export default function App() {
     [levelIndices, activeHardSet, activeDataset]
   );
 
-  const syncProgressToCloud = useCallback(
-    async (uid: string, nextMastered: Set<string>, nextHard: Set<string>) => {
-      const currentUser = auth.currentUser;
-      if (!currentUser || !currentUser.emailVerified) return;
-
-      const docPath = `users/${uid}`;
-      const userDocRef = doc(db, 'users', uid);
-      const payload = buildUserProgressWriteData(uid, nextMastered, nextHard);
-      const op = cloudDocExistsRef.current ? OperationType.UPDATE : OperationType.CREATE;
-      try {
-        if (cloudDocExistsRef.current) {
-          await updateDoc(userDocRef, {
-            mastered: payload.mastered,
-            hard: payload.hard,
-            updatedAt: serverTimestamp(),
-          });
-        } else {
-          await setDoc(userDocRef, {
-            ...payload,
-            displayName: sanitizeDisplayName(customNameRef.current || currentUser.displayName),
-            avatarUrl: sanitizeAvatarUrl(customAvatarRef.current || currentUser.photoURL),
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-          cloudDocExistsRef.current = true;
-        }
-      } catch (err) {
-        reportFirestoreFailure(err, op, docPath);
-      }
-    },
-    [reportFirestoreFailure]
-  );
-
-  const syncIrodoriBookToCloud = useCallback(
-    async (
-      uid: string,
-      bookId: IrodoriBookId,
-      nextMastered: Set<string>,
-      nextHard: Set<string>
-    ) => {
-      const currentUser = auth.currentUser;
-      if (!currentUser || !currentUser.emailVerified) return;
-
-      // Ensure parent /users/{uid} exists first (required by Firestore Master Gate rule)
-      if (!cloudDocExistsRef.current) {
-        await syncProgressToCloud(uid, masteredRef.current, hardRef.current);
-        if (!cloudDocExistsRef.current) return;
-      }
-
-      const docPath = `users/${uid}/irodoriProgress/${bookId}`;
-      const bookDocRef = doc(db, 'users', uid, 'irodoriProgress', bookId);
-      const payload = buildIrodoriProgressWriteData(uid, bookId, nextMastered, nextHard);
-      const op = irodoriCloudDocExistsRef.current[bookId]
-        ? OperationType.UPDATE
-        : OperationType.CREATE;
-      try {
-        if (irodoriCloudDocExistsRef.current[bookId]) {
-          await updateDoc(bookDocRef, {
-            mastered: payload.mastered,
-            hard: payload.hard,
-            updatedAt: serverTimestamp(),
-          });
-        } else {
-          await setDoc(bookDocRef, {
-            ...payload,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-          irodoriCloudDocExistsRef.current[bookId] = true;
-        }
-      } catch (err) {
-        reportFirestoreFailure(err, op, docPath);
-      }
-    },
-    [reportFirestoreFailure, syncProgressToCloud]
-  );
-
-  const syncQuizHistoryWriteToCloud = useCallback(
-    async (
-      uid: string,
-      datasetId: QuizDatasetId,
-      entries: readonly QuizSessionHistoryEntry[]
-    ) => {
-      const currentUser = auth.currentUser;
-      if (!currentUser || currentUser.uid !== uid || !currentUser.emailVerified) return;
-
-      // Ensure parent /users/{uid} exists first (required by Firestore Master Gate rule)
-      if (!cloudDocExistsRef.current) {
-        await syncProgressToCloud(uid, masteredRef.current, hardRef.current);
-        if (!cloudDocExistsRef.current) return;
-      }
-
-      const payload = buildQuizHistoryWriteData(uid, datasetId, entries);
-      // Avoid creating an empty cloud document when user has zero history
-      if (!quizHistoryCloudExistsRef.current[datasetId] && payload.sessions.length === 0) {
-        return;
-      }
-
-      const docPath = `users/${uid}/quizHistory/${datasetId}`;
-      const historyDocRef = doc(db, 'users', uid, 'quizHistory', datasetId);
-      const op = quizHistoryCloudExistsRef.current[datasetId]
-        ? OperationType.UPDATE
-        : OperationType.CREATE;
-      try {
-        if (quizHistoryCloudExistsRef.current[datasetId]) {
-          await updateDoc(historyDocRef, {
-            sessions: payload.sessions,
-            updatedAt: serverTimestamp(),
-          });
-        } else {
-          await setDoc(historyDocRef, {
-            ...payload,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-          quizHistoryCloudExistsRef.current[datasetId] = true;
-        }
-      } catch (err) {
-        reportFirestoreFailure(err, op, docPath);
-      }
-    },
-    [reportFirestoreFailure, syncProgressToCloud]
-  );
-
-  // Lazy per-dataset quiz history fetch: 1 single getDoc per (uid, datasetId) session, zero reads if Kuis tab isn't opened
-  const fetchQuizHistoryForDataset = useCallback(
-    async (uid: string, datasetId: QuizDatasetId, forceRefresh = false) => {
-      const currentUser = auth.currentUser;
-      if (!currentUser || currentUser.uid !== uid || !currentUser.emailVerified) return;
-      if (!cloudDocExistsRef.current) return;
-      if (!forceRefresh && quizHistoryLoadedRef.current[datasetId]) return;
-      if (quizHistoryLoadingRef.current[datasetId]) return;
-
-      quizHistoryLoadingRef.current[datasetId] = true;
-      setQuizHistorySyncing(true);
-      const docPath = `users/${uid}/quizHistory/${datasetId}`;
-      const historyDocRef = doc(db, 'users', uid, 'quizHistory', datasetId);
-
-      try {
-        const snap = await getDoc(historyDocRef);
-        if (auth.currentUser?.uid !== uid) return;
-
-        const localEntries = quizHistoryCanMergeLocalRef.current
-          ? quizHistoriesRef.current[datasetId]
-          : [];
-
-        if (!snap.exists()) {
-          quizHistoryCloudExistsRef.current[datasetId] = false;
-          quizHistoryLoadedRef.current[datasetId] = true;
-          if (localEntries.length > 0) {
-            await syncQuizHistoryWriteToCloud(uid, datasetId, localEntries);
-          }
-          return;
-        }
-
-        quizHistoryCloudExistsRef.current[datasetId] = true;
-        const raw = snap.data() as { sessions?: unknown };
-        const cloudEntries = decodeQuizHistoryFromCloud(raw.sessions, datasetId);
-        const { merged, needsCloudWrite } = mergeQuizHistories(cloudEntries, localEntries);
-
-        if (!areQuizHistoriesEqual(merged, quizHistoriesRef.current[datasetId])) {
-          saveQuizHistory(merged, undefined, QUIZ_HISTORY_KEYS_BY_DATASET[datasetId]);
-          setQuizHistories(prev => ({ ...prev, [datasetId]: merged }));
-        }
-
-        quizHistoryLoadedRef.current[datasetId] = true;
-        if (needsCloudWrite) {
-          await syncQuizHistoryWriteToCloud(uid, datasetId, merged);
-        }
-      } catch (err) {
-        reportFirestoreFailure(err, OperationType.GET, docPath);
-      } finally {
-        quizHistoryLoadingRef.current[datasetId] = false;
-        setQuizHistorySyncing(false);
-      }
-    },
-    [reportFirestoreFailure, syncQuizHistoryWriteToCloud]
-  );
-
-  const activeQuizDatasetId: QuizDatasetId = datasetMode === 'irodori' ? irodoriBookId : 'n4';
-
-  // Lazily hydrate active dataset's quiz history ONLY when user opens the Quiz tab
-  useEffect(() => {
-    if (activeTab !== 'quiz') return;
-    if (!authReady || !user || !user.emailVerified || cloudReadyUid !== user.uid) return;
-    void fetchQuizHistoryForDataset(user.uid, activeQuizDatasetId);
-  }, [activeTab, activeQuizDatasetId, authReady, user, cloudReadyUid, fetchQuizHistoryForDataset]);
-
-  const handleRecordQuizSession = useCallback(
-    (datasetId: QuizDatasetId, input: RecordQuizSessionInput) => {
-      const storageKey = QUIZ_HISTORY_KEYS_BY_DATASET[datasetId];
-      const next = recordQuizSession(
-        quizHistoriesRef.current[datasetId],
-        input,
-        undefined,
-        storageKey
-      );
-      quizHistoriesRef.current = { ...quizHistoriesRef.current, [datasetId]: next };
-      setQuizHistories(prev => ({ ...prev, [datasetId]: next }));
-      if (user) {
-        setStoredOwnerUid(user.uid);
-        if (user.emailVerified) {
-          if (quizHistoryLoadedRef.current[datasetId]) {
-            void syncQuizHistoryWriteToCloud(user.uid, datasetId, next);
-          } else {
-            quizHistoryCanMergeLocalRef.current = true;
-            void fetchQuizHistoryForDataset(user.uid, datasetId);
-          }
-        }
-      }
-    },
-    [user, syncQuizHistoryWriteToCloud, fetchQuizHistoryForDataset]
-  );
-
-  const handleClearQuizHistory = useCallback(
-    (datasetId: QuizDatasetId) => {
-      const storageKey = QUIZ_HISTORY_KEYS_BY_DATASET[datasetId];
-      clearQuizHistory(undefined, storageKey);
-      quizHistoriesRef.current = { ...quizHistoriesRef.current, [datasetId]: [] };
-      setQuizHistories(prev => ({ ...prev, [datasetId]: [] }));
-      if (user && user.emailVerified && quizHistoryCloudExistsRef.current[datasetId]) {
-        void syncQuizHistoryWriteToCloud(user.uid, datasetId, []);
-      }
-    },
-    [user, syncQuizHistoryWriteToCloud]
-  );
-
-  const applyProgressChange = useCallback(
-    (nextMastered: Set<string>, nextHard: Set<string>): boolean => {
-      if (datasetMode === 'irodori') {
-        const cfg = IRODORI_BOOKS[irodoriBookId];
-        const clean = sanitizeIrodoriProgressLists(irodoriBookId, nextMastered, nextHard);
-        const cleanM = new Set(clean.mastered);
-        const cleanH = new Set(clean.hard);
-        const tx = commitScopedProgressTransaction(cfg.lsKey, cfg.hardKey, cleanM, cleanH);
-        if (!tx.ok) {
-          showToast('error', 'Penyimpanan Gagal', tx.error);
-          return false;
-        }
-
-        if (user) {
-          setStoredOwnerUid(user.uid);
-          if (user.emailVerified) {
-            void syncIrodoriBookToCloud(user.uid, irodoriBookId, cleanM, cleanH);
-          }
-        }
-
-        setIrodoriProgress(prev => ({
-          ...prev,
-          [irodoriBookId]: { mastered: cleanM, hard: cleanH },
-        }));
-        return true;
-      }
-
-      const clean = sanitizeProgressLists(nextMastered, nextHard);
-      const cleanM = new Set(clean.mastered);
-      const cleanH = new Set(clean.hard);
-
-      const tx = commitProgressTransaction(cleanM, cleanH);
-      if (!tx.ok) {
-        showToast('error', 'Penyimpanan Gagal', tx.error);
-        return false;
-      }
-
-      if (user) {
-        setStoredOwnerUid(user.uid);
-        if (user.emailVerified) {
-          void syncProgressToCloud(user.uid, cleanM, cleanH);
-        }
-      }
-
-      setMastered(cleanM);
-      setHardSet(cleanH);
-      return true;
-    },
-    [datasetMode, irodoriBookId, showToast, user, syncProgressToCloud, syncIrodoriBookToCloud]
-  );
-
-  const clearAuthNotices = useCallback(() => {
-    setAuthErrorText(null);
-    setAuthInfoText(null);
-    setAuthConsoleHint(false);
-  }, []);
-
-  const handleOpenAuthModal = useCallback(
-    (isSwitch: boolean) => {
-      clearAuthNotices();
-      setAuthSwitchMode(isSwitch);
-      setAuthModalOpen(true);
-    },
-    [clearAuthNotices]
-  );
-
-  const handleGoogleLogin = useCallback(
-    async (forceSelectAccount: boolean) => {
-      if (authBusy) return;
-      clearAuthNotices();
-      setAuthBusy(true);
-      justSignedInRef.current = true;
-      try {
-        const provider = forceSelectAccount
-          ? createGoogleAccountPickerProvider()
-          : googleProvider;
-        await signInWithPopup(auth, provider);
-        setAuthModalOpen(false);
-      } catch (err) {
-        justSignedInRef.current = false;
-        const mapped = mapFirebaseAuthError(err);
-        setAuthErrorText(mapped.message);
-        setAuthConsoleHint(mapped.showConsoleHint);
-      } finally {
-        setAuthBusy(false);
-      }
-    },
-    [authBusy, clearAuthNotices]
-  );
-
-  const handleGithubLogin = useCallback(async () => {
-    if (authBusy) return;
-    clearAuthNotices();
-    setAuthBusy(true);
-    justSignedInRef.current = true;
-    try {
-      await signInWithPopup(auth, githubProvider);
-      setAuthModalOpen(false);
-    } catch (err) {
-      justSignedInRef.current = false;
-      const mapped = mapFirebaseAuthError(err);
-      setAuthErrorText(mapped.message);
-      setAuthConsoleHint(mapped.showConsoleHint);
-    } finally {
-      setAuthBusy(false);
-    }
-  }, [authBusy, clearAuthNotices]);
-
-  const handleEmailSignIn = useCallback(
-    async (email: string, password: string) => {
-      if (authBusy) return;
-      clearAuthNotices();
-      setAuthBusy(true);
-      justSignedInRef.current = true;
-      try {
-        const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
-        setAuthModalOpen(false);
-        if (!cred.user.emailVerified) {
-          showToast(
-            'warning',
-            'Verifikasi Email Diperlukan',
-            `Cek kotak masuk ${cred.user.email} untuk mengaktifkan sinkronisasi cloud.`
-          );
-        }
-      } catch (err) {
-        justSignedInRef.current = false;
-        const mapped = mapFirebaseAuthError(err);
-        setAuthErrorText(mapped.message);
-        setAuthConsoleHint(mapped.showConsoleHint);
-      } finally {
-        setAuthBusy(false);
-      }
-    },
-    [authBusy, clearAuthNotices, showToast]
-  );
-
-  const handleEmailSignUp = useCallback(
-    async (name: string, email: string, password: string) => {
-      if (authBusy) return;
-      clearAuthNotices();
-      setAuthBusy(true);
-      justSignedInRef.current = true;
-      try {
-        const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
-        const cleanName = sanitizeDisplayName(name) || email.trim().split('@')[0];
-        if (cleanName) {
-          await updateProfile(cred.user, { displayName: cleanName });
-        }
-        try {
-          await sendEmailVerification(cred.user);
-        } catch {
-          // Non-fatal if rate-limited
-        }
-        setAuthModalOpen(false);
-        showToast(
-          'info',
-          'Akun Dibuat · Cek Email',
-          `Tautan verifikasi dikirim ke ${cred.user.email}. Verifikasi untuk mulai sinkronisasi cloud.`
-        );
-      } catch (err) {
-        justSignedInRef.current = false;
-        const mapped = mapFirebaseAuthError(err);
-        setAuthErrorText(mapped.message);
-        setAuthConsoleHint(mapped.showConsoleHint);
-      } finally {
-        setAuthBusy(false);
-      }
-    },
-    [authBusy, clearAuthNotices, showToast]
-  );
-
-  const handleEmailReset = useCallback(
-    async (email: string) => {
-      if (authBusy) return;
-      clearAuthNotices();
-      setAuthBusy(true);
-      try {
-        await sendPasswordResetEmail(auth, email.trim());
-        setAuthInfoText(`Tautan reset kata sandi telah dikirim ke ${email.trim()}.`);
-      } catch (err) {
-        const mapped = mapFirebaseAuthError(err);
-        setAuthErrorText(mapped.message);
-        setAuthConsoleHint(mapped.showConsoleHint);
-      } finally {
-        setAuthBusy(false);
-      }
-    },
-    [authBusy, clearAuthNotices]
-  );
-
-  const handleResendVerification = useCallback(async () => {
-    const current = auth.currentUser;
-    if (!current || authBusy) return;
-    setAuthBusy(true);
-    try {
-      await sendEmailVerification(current);
-      showToast('success', 'Email Verifikasi Terkirim', `Periksa kotak masuk ${current.email}.`);
-    } catch (err) {
-      const mapped = mapFirebaseAuthError(err);
-      showToast('error', 'Gagal Mengirim Email', mapped.message);
-    } finally {
-      setAuthBusy(false);
-    }
-  }, [authBusy, showToast]);
-
-  const handleRefreshVerification = useCallback(async () => {
-    const current = auth.currentUser;
-    if (!current || authBusy) return;
-    setAuthBusy(true);
-    try {
-      await current.reload();
-      await current.getIdToken(true);
-      setAuthVersion(v => v + 1);
-      if (current.emailVerified) {
-        showToast('success', 'Email Terverifikasi', 'Sinkronisasi cloud kini aktif.');
-      } else {
-        showToast(
-          'info',
-          'Belum Terverifikasi',
-          'Silakan klik tautan verifikasi di email Anda lalu tekan Cek Status lagi.'
-        );
-      }
-    } catch (err) {
-      const mapped = mapFirebaseAuthError(err);
-      showToast('error', 'Gagal Memeriksa Status', mapped.message);
-    } finally {
-      setAuthBusy(false);
-    }
-  }, [authBusy, showToast]);
-
-  const handleManualSync = useCallback(async () => {
-    const current = auth.currentUser;
-    if (!current || !current.emailVerified || syncing) return;
-    setSyncing(true);
-    try {
-      await syncProgressToCloud(current.uid, masteredRef.current, hardRef.current);
-      for (const bookId of IRODORI_BOOK_ORDER) {
-        const bookState = irodoriProgressRef.current[bookId];
-        const hasProgress = bookState.mastered.size > 0 || bookState.hard.size > 0;
-        const shouldSyncBook =
-          hasProgress ||
-          irodoriCloudDocExistsRef.current[bookId] ||
-          (datasetMode === 'irodori' && bookId === irodoriBookId);
-        if (shouldSyncBook) {
-          await syncIrodoriBookToCloud(
-            current.uid,
-            bookId,
-            bookState.mastered,
-            bookState.hard
-          );
-        }
-      }
-      // Refresh active dataset's quiz history & push any other dataset with unsynced local quiz history
-      await fetchQuizHistoryForDataset(current.uid, activeQuizDatasetId, true);
-      for (const dsId of QUIZ_DATASET_IDS) {
-        if (dsId === activeQuizDatasetId) continue;
-        if (
-          quizHistoriesRef.current[dsId].length > 0 ||
-          quizHistoryCloudExistsRef.current[dsId]
-        ) {
-          await fetchQuizHistoryForDataset(current.uid, dsId, true);
-        }
-      }
-      showToast(
-        'success',
-        'Sinkronisasi Selesai',
-        'Progres & riwayat kuis JLPT N4 dan Irodori terbaru telah disinkronkan ke cloud.'
-      );
-    } finally {
-      setSyncing(false);
-    }
-  }, [
-    syncing,
-    syncProgressToCloud,
-    syncIrodoriBookToCloud,
-    fetchQuizHistoryForDataset,
-    activeQuizDatasetId,
-    datasetMode,
-    irodoriBookId,
-    showToast,
-  ]);
-
-  const handleSaveProfile = useCallback(
-    async (nextName: string, nextAvatarUrl: string): Promise<boolean> => {
-      const current = auth.currentUser;
-      if (!current) return false;
-      setProfileSaving(true);
-      try {
-        const clean = buildUserProfileWriteData(nextName, nextAvatarUrl);
-        await updateProfile(current, {
-          displayName: clean.displayName,
-          ...(clean.avatarUrl === '' || clean.avatarUrl.startsWith('https://')
-            ? { photoURL: clean.avatarUrl }
-            : {}),
-        });
-
-        setCustomDisplayName(clean.displayName);
-        setCustomAvatarUrl(clean.avatarUrl);
-        setAuthVersion(v => v + 1);
-
-        if (current.emailVerified) {
-          const docPath = `users/${current.uid}`;
-          const userDocRef = doc(db, 'users', current.uid);
-          try {
-            if (cloudDocExistsRef.current) {
-              await updateDoc(userDocRef, {
-                displayName: clean.displayName,
-                avatarUrl: clean.avatarUrl,
-                updatedAt: serverTimestamp(),
-              });
-            } else {
-              const payload = buildUserProgressWriteData(
-                current.uid,
-                masteredRef.current,
-                hardRef.current
-              );
-              await setDoc(userDocRef, {
-                ...payload,
-                displayName: clean.displayName,
-                avatarUrl: clean.avatarUrl,
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp(),
-              });
-              cloudDocExistsRef.current = true;
-            }
-          } catch (err) {
-            reportFirestoreFailure(
-              err,
-              cloudDocExistsRef.current ? OperationType.UPDATE : OperationType.CREATE,
-              docPath
-            );
-            return false;
-          }
-        }
-
-        showToast('success', 'Profil Diperbarui', 'Nama dan foto profil Anda telah disimpan.');
-        return true;
-      } catch (err) {
-        showToast(
-          'error',
-          'Gagal Memperbarui Profil',
-          err instanceof Error ? err.message : 'Terjadi kesalahan saat menyimpan profil.'
-        );
-        return false;
-      } finally {
-        setProfileSaving(false);
-      }
-    },
-    [reportFirestoreFailure, showToast]
-  );
-
-  const handleSignOut = useCallback(async () => {
-    if (authBusy) return;
-    setAuthBusy(true);
-    try {
-      await signOut(auth);
-      cloudDocExistsRef.current = false;
-      irodoriCloudDocExistsRef.current = { pemula: false, dasar1: false, dasar2: false };
-      quizHistoryCloudExistsRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
-      quizHistoryLoadedRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
-      quizHistoryLoadingRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
-      setCloudReadyUid(null);
-      justSignedInRef.current = false;
-      setCustomDisplayName('');
-      setCustomAvatarUrl('');
-      clearStoredProgress();
-      const emptyM = new Set<string>();
-      const emptyH = new Set<string>();
-      setMastered(emptyM);
-      setHardSet(emptyH);
-      setIrodoriProgress({
-        pemula: { mastered: new Set<string>(), hard: new Set<string>() },
-        dasar1: { mastered: new Set<string>(), hard: new Set<string>() },
-        dasar2: { mastered: new Set<string>(), hard: new Set<string>() },
-      });
-      setQuizHistories({ n4: [], pemula: [], dasar1: [], dasar2: [] });
-      const nextPool = computeCardPool(
-        levelFilter,
-        hideMastered,
-        hardMode,
-        emptyM,
-        emptyH
-      );
+  const handleSignOut = useCallback(() => {
+    void executeSignOut(() => {
+      const { emptyM, emptyH } = resetCloudAndLocalProgress();
+      const nextPool = computeCardPool(levelFilter, hideMastered, hardMode, emptyM, emptyH);
       rebuildOrder(nextPool, shuffleOn);
-      showToast(
-        'info',
-        'Berhasil Keluar',
-        'Progres & riwayat kuis N4 dan Irodori Anda tetap tersimpan aman di akun Anda.'
-      );
-    } catch (err) {
-      showToast(
-        'error',
-        'Gagal Keluar',
-        err instanceof Error ? err.message : 'Tidak dapat keluar dari akun saat ini.'
-      );
-    } finally {
-      setAuthBusy(false);
-    }
+    });
   }, [
-    authBusy,
+    executeSignOut,
+    resetCloudAndLocalProgress,
     computeCardPool,
     levelFilter,
     hideMastered,
     hardMode,
     rebuildOrder,
     shuffleOn,
-    showToast,
   ]);
 
   const handleToggleDatasetMode = useCallback(() => {
@@ -1828,177 +599,15 @@ export default function App() {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [activeTab, anyModalOpen, pos, order, activeDataset, handleMarkMastered, handleMarkHard]);
 
-  const handleExport = useCallback(() => {
-    try {
-      const payload = buildBackupPayload(activeMastered, activeHardSet);
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const prefix =
-        datasetMode === 'irodori' ? `backup-irodori-${irodoriBookId}` : 'backup-kanji-n4';
-      a.download = `${prefix}-${new Date().toISOString().slice(0, 10)}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      showToast(
-        'success',
-        'Backup Diunduh',
-        `${activeMastered.size} hafal & ${activeHardSet.size} sulit diekspor ke JSON.`
-      );
-    } catch {
-      showToast('error', 'Backup Gagal', 'Gagal membuat file backup JSON.');
-    }
-  }, [activeMastered, activeHardSet, datasetMode, irodoriBookId, showToast]);
-
-  const restoreFocusToButton = useCallback(() => {
-    requestAnimationFrame(() => {
-      restoreBtnRef.current?.focus();
-    });
-  }, []);
-
-  const handleTriggerImport = useCallback(() => {
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-      fileInputRef.current.click();
-    }
-  }, []);
-
-  const handleFileSelected = useCallback(
-    (file: File) => {
-      if (file.size > 1024 * 1024) {
-        showToast('error', 'Restore Ditolak', 'Ukuran file terlalu besar (maksimal 1 MB).');
-        restoreFocusToButton();
-        return;
-      }
-
-      const reader = new FileReader();
-      reader.onerror = () => {
-        showToast(
-          'error',
-          'Gagal Membaca File',
-          'File tidak dapat dibaca. Progres saat ini tetap aman.'
-        );
-        restoreFocusToButton();
-      };
-      reader.onabort = () => {
-        showToast('warning', 'Restore Dibatalkan', 'Pembacaan file dihentikan.');
-        restoreFocusToButton();
-      };
-      reader.onload = ev => {
-        try {
-          const text = typeof ev.target?.result === 'string' ? ev.target.result : '';
-          const parsed = validateAndParseBackup(text, activeValidIds);
-          setToast(null);
-          setPendingRestore({ parsed, fileName: file.name });
-        } catch (err) {
-          const msg =
-            err instanceof Error ? err.message : 'File backup tidak valid atau rusak.';
-          showToast(
-            'error',
-            'Restore Ditolak',
-            `${msg} Progres saat ini tetap aman dan tidak berubah.`
-          );
-          restoreFocusToButton();
-        }
-      };
-      reader.readAsText(file);
-    },
-    [showToast, restoreFocusToButton, activeValidIds]
-  );
-
-  const restorePreviews = useMemo(() => {
-    if (!pendingRestore) {
-      return { mergedMastered: 0, mergedHard: 0, cleanImpHard: 0 };
-    }
-    const { impMastered, impHard } = pendingRestore.parsed;
-    const mergedM = new Set([...activeMastered, ...impMastered]);
-    const mergedH = new Set([...activeHardSet, ...impHard].filter(id => !mergedM.has(id)));
-    const cleanImpH = impHard.filter(id => !impMastered.includes(id));
-    return {
-      mergedMastered: mergedM.size,
-      mergedHard: mergedH.size,
-      cleanImpHard: cleanImpH.length,
-    };
-  }, [pendingRestore, activeMastered, activeHardSet]);
-
-  const handleCloseRestoreModal = useCallback(() => {
-    setPendingRestore(null);
-    restoreFocusToButton();
-  }, [restoreFocusToButton]);
-
-  const handleConfirmRestore = useCallback(
-    (mode: 'merge' | 'replace') => {
-      if (!pendingRestore) return;
-      const { impMastered, impHard, rejectedIds } = pendingRestore.parsed;
-
-      let nextMastered: Set<string>;
-      let nextHard: Set<string>;
-
-      if (mode === 'merge') {
-        nextMastered = new Set(activeMastered);
-        nextHard = new Set(activeHardSet);
-        impMastered.forEach(id => {
-          nextMastered.add(id);
-          nextHard.delete(id);
-        });
-        impHard.forEach(id => {
-          if (!nextMastered.has(id)) nextHard.add(id);
-        });
-      } else {
-        nextMastered = new Set(impMastered);
-        nextHard = new Set(impHard.filter(id => !nextMastered.has(id)));
-      }
-
-      const committed = applyProgressChange(nextMastered, nextHard);
-      setPendingRestore(null);
-      restoreFocusToButton();
-      if (!committed) return;
-
-      const nextPool = computeCardPool(levelFilter, hideMastered, hardMode, nextMastered, nextHard);
-      rebuildOrder(nextPool, shuffleOn);
-
-      const modeLabel = mode === 'merge' ? 'digabungkan' : 'ditimpa';
-      const rejectedNote = rejectedIds.length
-        ? `${rejectedIds.length} ID tidak dikenali diabaikan.`
-        : undefined;
-
-      showToast(
-        'success',
-        `Progres berhasil ${modeLabel}: ${nextMastered.size} hafal & ${nextHard.size} sulit.`,
-        rejectedNote
-      );
-    },
-    [
-      pendingRestore,
-      activeMastered,
-      activeHardSet,
-      applyProgressChange,
-      restoreFocusToButton,
-      computeCardPool,
-      levelFilter,
-      hideMastered,
-      hardMode,
-      rebuildOrder,
-      shuffleOn,
-      showToast,
-    ]
-  );
-
   const effectiveDisplayName =
     customDisplayName || user?.displayName || user?.email?.split('@')[0] || '';
   const effectiveAvatarUrl = customAvatarUrl || user?.photoURL || '';
-
   const isIrodoriEmptyBook =
     datasetMode === 'irodori' && activeIrodoriBook.data.length === 0;
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
-      <div
-        aria-hidden={anyModalOpen}
-        className="flex-1 flex flex-col"
-      >
+      <div aria-hidden={anyModalOpen} className="flex-1 flex flex-col">
         <AppHeader
           datasetMode={datasetMode}
           irodoriBookTitle={activeIrodoriBook.label}
@@ -2018,7 +627,7 @@ export default function App() {
           onManualSync={() => void handleManualSync()}
           onResendVerification={() => void handleResendVerification()}
           onRefreshVerification={() => void handleRefreshVerification()}
-          onSignOut={() => void handleSignOut()}
+          onSignOut={handleSignOut}
           onExport={handleExport}
           onTriggerImport={handleTriggerImport}
           onFileSelected={handleFileSelected}
@@ -2174,7 +783,7 @@ export default function App() {
         onClose={handleCloseRestoreModal}
       />
 
-      <ToastBanner toast={toast} onDismiss={() => setToast(null)} />
+      <ToastBanner toast={toast} onDismiss={dismissToast} />
     </div>
   );
 }

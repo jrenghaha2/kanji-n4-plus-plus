@@ -26,6 +26,18 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Setup Java 21 (for Firestore Emulator)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Cache Firebase Emulator binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: ${{ runner.os }}-firebase-emulators-v1
+
       - name: Install dependencies
         run: npm install --legacy-peer-deps --no-audit --no-fund
 
@@ -37,6 +49,9 @@ jobs:
 
       - name: Run unit & security test suite
         run: npm test
+
+      - name: Run Firestore Rules Emulator integration tests
+        run: npm run test:rules:emulator
 
       - name: Build production bundle
         env:
