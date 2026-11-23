@@ -478,7 +478,7 @@ export function UserDetailModal({
             ) : detail ? (
               <>
                 {/* Live Quiz Real-Time Inspector (shown whenever user is actively taking or just finished a quiz) */}
-                {row.liveQuizCurrent || row.liveQuizLog.length > 0 ? (
+                {row.quizInProgress || row.liveQuizCurrent || row.liveQuizLog.length > 0 ? (
                   <LiveQuizMonitorCard row={row} />
                 ) : null}
 

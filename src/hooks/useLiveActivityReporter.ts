@@ -169,15 +169,21 @@ export function useLiveActivityReporter({
         (quizInProgress || quizLiveState?.stage === 'result')
     );
 
+    const liveDatasetId: QuizDatasetId =
+      activeTab === 'quiz' && quizLiveState?.datasetId
+        ? quizLiveState.datasetId
+        : currentDatasetId;
+
     const quizCurrentToken = quizInProgress
-      ? encodeLiveQuizToken(quizLiveState?.currentQuestionSnapshot, currentDatasetId)
+      ? encodeLiveQuizToken(quizLiveState?.currentQuestionSnapshot, liveDatasetId)
       : '';
     const quizLiveLog = keepLiveQuizLog
-      ? encodeLiveQuizLog(quizLiveState?.answeredLog, currentDatasetId)
+      ? encodeLiveQuizLog(quizLiveState?.answeredLog, liveDatasetId)
       : '';
 
     return {
       activityType,
+      datasetId: liveDatasetId,
       moduleLabel: sanitizeBoundedText(moduleLabel, MODULE_LABEL_MAX_LENGTH),
       scopeLabel: sanitizeBoundedText(
         quizLiveState?.scopeLabel && activeTab === 'quiz'
@@ -216,7 +222,7 @@ export function useLiveActivityReporter({
       role: userRole,
       activityType: activityMeta.activityType,
       datasetMode,
-      datasetId: currentDatasetId,
+      datasetId: activityMeta.datasetId,
       moduleLabel: activityMeta.moduleLabel,
       scopeLabel: activityMeta.scopeLabel,
       quizInProgress: activityMeta.quizInProgress,

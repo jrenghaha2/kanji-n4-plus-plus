@@ -138,7 +138,7 @@ export function LiveQuizMonitorCard({ row }: LiveQuizMonitorCardProps) {
     return answeredHistory;
   }, [answeredHistory, logFilter]);
 
-  if (!currentQ && row.liveQuizLog.length === 0) {
+  if (!row.quizInProgress && !currentQ && row.liveQuizLog.length === 0) {
     return null;
   }
 
@@ -186,12 +186,16 @@ export function LiveQuizMonitorCard({ row }: LiveQuizMonitorCardProps) {
           <span className="font-semibold text-emerald-700 dark:text-emerald-400">
             {Math.max(row.quizCorrectCount, correctTotal)} benar
           </span>
-          <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">
-            ·
-          </span>
-          <span className="font-semibold text-rose-700 dark:text-rose-400">
-            {wrongTotal} salah
-          </span>
+          {totalAnswered > 0 ? (
+            <>
+              <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">
+                ·
+              </span>
+              <span className="font-semibold text-rose-700 dark:text-rose-400">
+                {wrongTotal} salah
+              </span>
+            </>
+          ) : null}
         </div>
       </div>
 
@@ -265,6 +269,23 @@ export function LiveQuizMonitorCard({ row }: LiveQuizMonitorCardProps) {
 
           {/* Options A-D */}
           <QuestionChoicesGrid q={currentQ} />
+        </div>
+      ) : row.quizInProgress ? (
+        <div className="rounded-xl border border-dashed border-amber-300/80 dark:border-amber-700/60 bg-white/80 dark:bg-slate-900/75 p-4 space-y-1.5">
+          <div className="flex items-center gap-2 text-xs font-bold text-amber-800 dark:text-amber-300">
+            <Clock className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+            <span>Menunggu detail soal &amp; pilihan A–D dari perangkat pengguna...</span>
+          </div>
+          <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+            Pengguna ini sedang mengerjakan soal{' '}
+            <strong className="font-mono-num">
+              {row.quizCurrentQuestion}/{row.quizTotalQuestions}
+            </strong>
+            , namun perangkatnya belum mengirim paket soal real-time (biasanya karena tab pengguna
+            masih membuka versi lama / belum di-refresh, atau mengakses build lama sebelum pembaruan).
+            Begitu pengguna membuka versi terbaru, soal aktif beserta pilihan A–D dan jawaban pilihannya
+            akan langsung muncul di sini secara otomatis.
+          </p>
         </div>
       ) : null}
 

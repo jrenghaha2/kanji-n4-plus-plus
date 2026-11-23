@@ -12,11 +12,14 @@ import {
   sortMonitoredUsers,
 } from './adminMonitor';
 import {
+  QUIZ_CURRENT_TOKEN_PATTERN,
   decodeLiveQuizLog,
   decodeLiveQuizToken,
   encodeLiveQuizLog,
   encodeLiveQuizToken,
 } from './liveQuizSync';
+import { buildQuizSession } from './quizEngine';
+import { QUIZ_DATASET_IDS, getQuizDatasetEntries } from './quizHistorySync';
 import {
   BOOTSTRAP_SUPERADMIN_EMAIL,
   canManageUserRole,
@@ -479,4 +482,57 @@ test('liveQuizSync encodes and deterministically decodes current question, A-D o
   assert.equal(decodeLiveQuizToken('1|k2m|n1|n1,n2,n3,n4|5', 'n4'), null);
   assert.deepEqual(decodeLiveQuizLog('1|k2m|n1|n1,n2,n3,n4|-1', 'n4'), []);
 });
+
+test('liveQuizSync encodes and decodes 100% of item IDs and real buildQuizSession questions across all 4 datasets', () => {
+  for (const dsId of QUIZ_DATASET_IDS) {
+    const entries = getQuizDatasetEntries(dsId);
+    assert.ok(entries.length > 0, `Dataset ${dsId} must not be empty`);
+
+    // Every single item ID in the dataset must encode & decode cleanly
+    const sampleDistractors = entries.slice(0, 3).map(e => e.id);
+    for (let i = 0; i < entries.length; i++) {
+      const item = entries[i];
+      const optionIds = [
+        item.id,
+        ...sampleDistractors.filter(id => id !== item.id),
+      ].slice(0, 4);
+      const token = encodeLiveQuizToken(
+        {
+          no: (i % 500) + 1,
+          type: 'k2m',
+          itemId: item.id,
+          optionIds,
+          chosenIdx: -1,
+        },
+        dsId
+      );
+      assert.ok(
+        token.length > 0 && QUIZ_CURRENT_TOKEN_PATTERN.test(token),
+        `Failed to encode item ${item.id} in dataset ${dsId}`
+      );
+    }
+
+    // Real generated quiz sessions (random5) must round-trip cleanly
+    const session = buildQuizSession('all', 'random5', 15, entries);
+    assert.ok(session.length > 0);
+    const snapshots = session.map((q, idx) => ({
+      no: idx + 1,
+      type: q.type,
+      itemId: q.item.id,
+      optionIds: q.options.map(o => o.item.id),
+      chosenIdx: idx % q.options.length,
+    }));
+    for (const snap of snapshots) {
+      const tok = encodeLiveQuizToken(snap, dsId);
+      assert.ok(tok.length > 0, `Failed to encode live session Q#${snap.no} in ${dsId}`);
+      const dec = decodeLiveQuizToken(tok, dsId);
+      assert.ok(dec, `Failed to decode live session Q#${snap.no} in ${dsId}`);
+      assert.equal(dec?.options.length, snap.optionIds.length);
+      assert.equal(dec?.answered, true);
+    }
+    const log = encodeLiveQuizLog(snapshots, dsId);
+    assert.equal(decodeLiveQuizLog(log, dsId).length, snapshots.length);
+  }
+});
+
 

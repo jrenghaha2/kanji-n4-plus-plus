@@ -162,7 +162,7 @@ export function AdminRealtimeTab({ rows, nowMs, onOpenDetail }: AdminRealtimeTab
                 : 0;
 
             const hasLiveQuizView = Boolean(
-              row.liveQuizCurrent || row.liveQuizLog.length > 0
+              row.quizInProgress || row.liveQuizCurrent || row.liveQuizLog.length > 0
             );
             const isLiveExpanded =
               hasLiveQuizView &&
