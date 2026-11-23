@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -83,6 +83,31 @@ export function FlashcardPanel({
 }: FlashcardPanelProps) {
   const [armedResetMastered, setArmedResetMastered] = useState(false);
   const [armedClearHard, setArmedClearHard] = useState(false);
+  const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
+
+  const handleCardPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    pointerDownRef.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const handleCardClick = (e: MouseEvent<HTMLDivElement>) => {
+    const down = pointerDownRef.current;
+    pointerDownRef.current = null;
+    if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) {
+      return;
+    }
+    const selectedText = typeof window !== 'undefined' ? window.getSelection()?.toString() : '';
+    if (selectedText && selectedText.trim().length > 0) {
+      return;
+    }
+    onFlip();
+  };
+
+  const handleCardKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      onFlip();
+    }
+  };
 
   useEffect(() => {
     if (!armedResetMastered) return;
@@ -210,7 +235,11 @@ export function FlashcardPanel({
               }`}
             >
               {/* Front Face */}
-              <div className="backface-hidden absolute inset-0 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+              <div
+                className={`backface-hidden absolute inset-0 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm ${
+                  flipped ? 'pointer-events-none' : 'pointer-events-auto'
+                }`}
+              >
                 {isAdvancedKanji ? (
                   <span
                     title={`Kanji di luar daftar acuan N4/JFT: ${outsideWhitelistKanji.join('、')}`}
@@ -219,16 +248,19 @@ export function FlashcardPanel({
                     Kanji Lanjutan
                   </span>
                 ) : null}
-                <button
-                  type="button"
+                <div
+                  role="button"
+                  tabIndex={flipped ? -1 : 0}
                   id="flashcardFlipFront"
                   aria-pressed={flipped}
                   aria-label={`Kartu kanji ${currentItem?.k ?? ''}, ketuk untuk membalik`}
-                  onClick={onFlip}
-                  className="w-full h-full flex flex-col items-center justify-center p-6 text-center rounded-2xl cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-500"
+                  onPointerDown={handleCardPointerDown}
+                  onClick={handleCardClick}
+                  onKeyDown={handleCardKeyDown}
+                  className="w-full h-full flex flex-col items-center justify-center p-6 text-center rounded-2xl cursor-pointer select-text focus-visible:outline-2 focus-visible:outline-indigo-500"
                 >
                   <span
-                    className={`font-jp font-extrabold text-slate-900 dark:text-slate-50 tracking-tight leading-tight max-w-full break-words ${
+                    className={`font-jp font-extrabold text-slate-900 dark:text-slate-50 tracking-tight leading-tight max-w-full break-words cursor-text ${
                       kLen >= 6
                         ? 'text-3xl sm:text-5xl'
                         : kLen >= 4
@@ -238,10 +270,10 @@ export function FlashcardPanel({
                   >
                     {currentItem?.k}
                   </span>
-                  <span className="mt-5 text-xs sm:text-sm font-medium text-slate-500 dark:text-slate-400">
+                  <span className="mt-5 text-xs sm:text-sm font-medium text-slate-500 dark:text-slate-400 select-none">
                     Ketuk kartu atau tekan Spasi untuk membalik
                   </span>
-                </button>
+                </div>
                 <button
                   type="button"
                   id="btnSpeakFront"
@@ -257,7 +289,11 @@ export function FlashcardPanel({
               </div>
 
               {/* Back Face */}
-              <div className="backface-hidden rotate-y-180 absolute inset-0 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+              <div
+                className={`backface-hidden rotate-y-180 absolute inset-0 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm ${
+                  flipped ? 'pointer-events-auto' : 'pointer-events-none'
+                }`}
+              >
                 {isAdvancedKanji ? (
                   <span
                     title={`Kanji di luar daftar acuan N4/JFT: ${outsideWhitelistKanji.join('、')}`}
@@ -266,32 +302,35 @@ export function FlashcardPanel({
                     Kanji Lanjutan
                   </span>
                 ) : null}
-                <button
-                  type="button"
+                <div
+                  role="button"
+                  tabIndex={flipped ? 0 : -1}
                   id="flashcardFlipBack"
                   aria-pressed={flipped}
                   aria-label={`Sisi belakang kartu ${currentItem?.k ?? ''}, ketuk untuk membalik kembali`}
-                  onClick={onFlip}
-                  className="w-full h-full flex flex-col items-center justify-center p-5 sm:p-8 text-center overflow-y-auto rounded-2xl cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-500"
+                  onPointerDown={handleCardPointerDown}
+                  onClick={handleCardClick}
+                  onKeyDown={handleCardKeyDown}
+                  className="w-full h-full flex flex-col items-center justify-center p-5 sm:p-8 text-center overflow-y-auto rounded-2xl cursor-pointer select-text focus-visible:outline-2 focus-visible:outline-indigo-500"
                 >
-                  <span className="font-jp text-2xl sm:text-4xl font-extrabold text-indigo-700 dark:text-indigo-300">
+                  <span className="font-jp text-2xl sm:text-4xl font-extrabold text-indigo-700 dark:text-indigo-300 cursor-text">
                     {currentItem?.r}
                   </span>
                   {currentItem?.romaji ? (
-                    <span className="mt-0.5 text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium">
+                    <span className="mt-0.5 text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium cursor-text">
                       {currentItem.romaji}
                     </span>
                   ) : null}
                   {currentItem?.accent ? (
-                    <span className="mt-0.5 text-xs font-jp text-slate-500 dark:text-slate-400 font-medium">
+                    <span className="mt-0.5 text-xs font-jp text-slate-500 dark:text-slate-400 font-medium cursor-text">
                       Aksen: {currentItem.accent}
                     </span>
                   ) : null}
-                  <span className="mt-1.5 text-base sm:text-xl font-bold text-slate-900 dark:text-slate-50">
+                  <span className="mt-1.5 text-base sm:text-xl font-bold text-slate-900 dark:text-slate-50 cursor-text">
                     {currentItem?.m}
                   </span>
                   {currentItem?.kanjiList && currentItem.kanjiList.length > 0 ? (
-                    <span className="mt-1 text-xs font-semibold text-teal-700 dark:text-teal-300 font-jp">
+                    <span className="mt-1 text-xs font-semibold text-teal-700 dark:text-teal-300 font-jp cursor-text">
                       Kanji: {currentItem.kanjiList.join(' ・ ')}
                     </span>
                   ) : null}
@@ -306,14 +345,14 @@ export function FlashcardPanel({
                   </span>
 
                   <span className="mt-4 w-full max-w-lg rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 p-3.5 sm:p-4 text-left block">
-                    <span className="font-jp text-sm sm:text-lg font-medium text-slate-900 dark:text-slate-50 leading-relaxed block pr-20">
+                    <span className="font-jp text-sm sm:text-lg font-medium text-slate-900 dark:text-slate-50 leading-relaxed block pr-20 cursor-text">
                       {currentItem?.ex}
                     </span>
-                    <span className="mt-1.5 text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed block">
+                    <span className="mt-1.5 text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed block cursor-text">
                       {currentItem?.exi}
                     </span>
                   </span>
-                </button>
+                </div>
 
                 <button
                   type="button"
