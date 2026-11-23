@@ -299,6 +299,174 @@ test(
       await assertSucceeds(deleteDoc(doc(userADb, 'users', 'userA_123', 'quizHistory', 'n4')));
 
       await assertFails(deleteDoc(doc(userBDb, 'users', 'userA_123')));
+
+      // 8. 3-Tier RBAC, Bootstrap Superadmin protection, liveActivity, and immutable activityEvents
+      const bootstrapDb = testEnv
+        .authenticatedContext('boot_uid', {
+          email_verified: true,
+          email: 'jrenghaha2@gmail.com',
+        })
+        .firestore();
+      const spoofedBootDb = testEnv
+        .authenticatedContext('spoof_uid', {
+          email_verified: false,
+          email: 'jrenghaha2@gmail.com',
+        })
+        .firestore();
+      const adminDb = testEnv
+        .authenticatedContext('admin_uid', {
+          email_verified: true,
+          email: 'admin@example.com',
+        })
+        .firestore();
+      const super2Db = testEnv
+        .authenticatedContext('super2_uid', {
+          email_verified: true,
+          email: 'super2@example.com',
+        })
+        .firestore();
+
+      // Unverified spoof with bootstrap email MUST fail
+      await assertFails(getDocs(collection(spoofedBootDb, 'users')));
+
+      // Bootstrap Superadmin creates own doc with role='superadmin'
+      await assertSucceeds(
+        setDoc(doc(bootstrapDb, 'users', 'boot_uid'), {
+          uid: 'boot_uid',
+          email: 'jrenghaha2@gmail.com',
+          role: 'superadmin',
+          mastered: [],
+          hard: [],
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        })
+      );
+
+      // Admin & Super2 create their base docs as regular users first
+      await assertSucceeds(
+        setDoc(doc(adminDb, 'users', 'admin_uid'), {
+          uid: 'admin_uid',
+          email: 'admin@example.com',
+          role: 'user',
+          mastered: [],
+          hard: [],
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        })
+      );
+      await assertSucceeds(
+        setDoc(doc(super2Db, 'users', 'super2_uid'), {
+          uid: 'super2_uid',
+          email: 'super2@example.com',
+          role: 'user',
+          mastered: [],
+          hard: [],
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        })
+      );
+
+      // Regular user cannot self-escalate
+      await assertFails(
+        updateDoc(doc(adminDb, 'users', 'admin_uid'), {
+          role: 'admin',
+          updatedAt: serverTimestamp(),
+        })
+      );
+
+      // Bootstrap Superadmin promotes admin_uid -> admin and super2_uid -> superadmin
+      await assertSucceeds(
+        updateDoc(doc(bootstrapDb, 'users', 'admin_uid'), {
+          role: 'admin',
+          updatedAt: serverTimestamp(),
+        })
+      );
+      await assertSucceeds(
+        updateDoc(doc(bootstrapDb, 'users', 'super2_uid'), {
+          role: 'superadmin',
+          updatedAt: serverTimestamp(),
+        })
+      );
+
+      // Admin has read-only access to users & subcollections, but CANNOT change any role
+      await assertSucceeds(getDocs(collection(adminDb, 'users')));
+      await assertSucceeds(getDoc(doc(adminDb, 'users', 'userA_123')));
+      await assertFails(
+        updateDoc(doc(adminDb, 'users', 'userA_123'), {
+          role: 'admin',
+          updatedAt: serverTimestamp(),
+        })
+      );
+
+      // Secondary Superadmin CANNOT demote Bootstrap Superadmin or modify own role
+      await assertFails(
+        updateDoc(doc(super2Db, 'users', 'boot_uid'), {
+          role: 'user',
+          updatedAt: serverTimestamp(),
+        })
+      );
+      await assertFails(
+        updateDoc(doc(super2Db, 'users', 'super2_uid'), {
+          role: 'user',
+          updatedAt: serverTimestamp(),
+        })
+      );
+
+      // liveActivity & append-only activityEvents
+      const validLivePayload = {
+        uid: 'userA_123',
+        displayName: 'User A',
+        email: '',
+        avatarUrl: '',
+        role: 'user',
+        activityType: 'quiz_running',
+        datasetMode: 'n4',
+        datasetId: 'n4',
+        moduleLabel: 'Kanji N4 · Kuis',
+        scopeLabel: 'Semua',
+        quizInProgress: true,
+        quizCurrentQuestion: 2,
+        quizTotalQuestions: 10,
+        quizCorrectCount: 1,
+        quizMode: 'k2r',
+        totalMastered: 3,
+        totalHard: 1,
+        n4Mastered: 3,
+        irodoriMastered: 0,
+        totalQuizSessions: 1,
+        lastQuizScore: 80,
+        lastQuizTotal: 10,
+        lastQuizDatasetId: 'n4',
+        updatedAt: serverTimestamp(),
+      };
+      await assertSucceeds(setDoc(doc(userADb, 'liveActivity', 'userA_123'), validLivePayload));
+      await assertFails(getDocs(collection(userADb, 'liveActivity')));
+      await assertSucceeds(getDocs(collection(adminDb, 'liveActivity')));
+
+      const validEventPayload = {
+        uid: 'userA_123',
+        displayName: 'User A',
+        email: '',
+        avatarUrl: '',
+        eventType: 'quiz_completed',
+        datasetId: 'n4',
+        moduleLabel: 'Kanji N4 · Kuis',
+        scopeLabel: 'Semua',
+        quizMode: 'k2r',
+        score: 90,
+        correct: 9,
+        total: 10,
+        totalMastered: 3,
+        summary: 'Menyelesaikan kuis Kanji N4 dengan skor 90%',
+        createdAt: serverTimestamp(),
+      };
+      await assertSucceeds(setDoc(doc(userADb, 'activityEvents', 'ev_test_1'), validEventPayload));
+      await assertFails(
+        updateDoc(doc(userADb, 'activityEvents', 'ev_test_1'), { score: 100 })
+      );
+      await assertFails(deleteDoc(doc(userADb, 'activityEvents', 'ev_test_1')));
+      await assertSucceeds(getDocs(collection(adminDb, 'activityEvents')));
+
       await assertSucceeds(deleteDoc(doc(userADb, 'users', 'userA_123')));
     } finally {
       await testEnv.cleanup();

@@ -11,6 +11,7 @@ import {
   handleFirestoreError,
   isFirestoreQuotaError,
 } from '../firebase';
+import type { UserRole } from '../types/admin';
 import type {
   AppDatasetMode,
   AppTab,
@@ -18,6 +19,12 @@ import type {
   QuizDatasetId,
   QuizSessionHistoryEntry,
 } from '../types/kanji';
+import {
+  isBootstrapSuperAdminEmail,
+  isValidUserRole,
+  normalizeEmail,
+  resolveEffectiveRole,
+} from '../utils/rbac';
 import {
   areSetsEqual,
   buildIrodoriProgressWriteData,
@@ -114,6 +121,8 @@ export function useCloudProgressSync({
   }));
 
   const [cloudReadyUid, setCloudReadyUid] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<UserRole>('user');
+  const [roleResolved, setRoleResolved] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [quizHistorySyncing, setQuizHistorySyncing] = useState(false);
   const [fatalError, setFatalError] = useState<Error | null>(null);
@@ -204,6 +213,8 @@ export function useCloudProgressSync({
       quizHistoryLoadingRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
       quizHistoryCanMergeLocalRef.current = true;
       setCloudReadyUid(null);
+      setUserRole('user');
+      setRoleResolved(authReady);
       setCustomDisplayName('');
       setCustomAvatarUrl('');
       setSyncing(false);
@@ -218,12 +229,17 @@ export function useCloudProgressSync({
       quizHistoryLoadedRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
       quizHistoryLoadingRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
       setCloudReadyUid(null);
+      setUserRole('user');
+      setRoleResolved(true);
       setStoredOwnerUid(uid);
       setCustomDisplayName(sanitizeDisplayName(user.displayName));
       setCustomAvatarUrl(sanitizeAvatarUrl(user.photoURL));
       setSyncing(false);
       return;
     }
+
+    setUserRole(isBootstrapSuperAdminEmail(user.email) ? 'superadmin' : 'user');
+    setRoleResolved(false);
 
     let cancelled = false;
     const unsubSnapshots: Array<() => void> = [];
@@ -264,11 +280,17 @@ export function useCloudProgressSync({
           const payload = buildUserProgressWriteData(uid, localM, localH);
           const initialName = sanitizeDisplayName(customNameRef.current || user.displayName);
           const initialAvatar = sanitizeAvatarUrl(customAvatarRef.current || user.photoURL);
+          const initialEmail = normalizeEmail(user.email);
+          const initialRole: UserRole = isBootstrapSuperAdminEmail(user.email)
+            ? 'superadmin'
+            : 'user';
           try {
             await setDoc(userDocRef, {
               ...payload,
               displayName: initialName,
+              email: initialEmail,
               avatarUrl: initialAvatar,
+              role: initialRole,
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
             });
@@ -287,6 +309,8 @@ export function useCloudProgressSync({
           setHardSet(cleanLocalH);
           setCustomDisplayName(initialName);
           setCustomAvatarUrl(initialAvatar);
+          setUserRole(initialRole);
+          setRoleResolved(true);
           n4MasteredCount = cleanLocalM.size;
           n4HardCount = cleanLocalH.size;
           totalLocalSyncedOnCreate += cleanLocalM.size + cleanLocalH.size;
@@ -296,7 +320,9 @@ export function useCloudProgressSync({
             mastered?: unknown[];
             hard?: unknown[];
             displayName?: unknown;
+            email?: unknown;
             avatarUrl?: unknown;
+            role?: unknown;
           };
           const cleanCloud = sanitizeProgressLists(
             Array.isArray(data.mastered) ? data.mastered : [],
@@ -305,23 +331,58 @@ export function useCloudProgressSync({
           const cloudMSet = new Set(cleanCloud.mastered);
           const cloudHSet = new Set(cleanCloud.hard);
 
-          const cloudName =
-            sanitizeDisplayName(data.displayName) || sanitizeDisplayName(user.displayName);
-          const cloudAvatar = sanitizeAvatarUrl(data.avatarUrl);
+          const existingName = sanitizeDisplayName(data.displayName);
+          const authName = sanitizeDisplayName(user.displayName);
+          const cloudName = existingName || authName;
+
+          const existingAvatar = sanitizeAvatarUrl(data.avatarUrl);
+          const authAvatar = sanitizeAvatarUrl(user.photoURL);
+          const cloudAvatar = existingAvatar || authAvatar;
+
+          const existingEmail = normalizeEmail(data.email);
+          const authEmail = normalizeEmail(user.email);
+
+          const isBootstrap = isBootstrapSuperAdminEmail(user.email);
+          const hasStoredRole = isValidUserRole(data.role);
+          const effectiveRole = resolveEffectiveRole(user, data.role);
+
           setCustomDisplayName(cloudName);
           setCustomAvatarUrl(cloudAvatar);
+          setUserRole(effectiveRole);
+          setRoleResolved(true);
 
           const merged = mergeProgressSets(cloudMSet, cloudHSet, localM, localH);
+
+          // Auto-heal legacy user metadata without overwriting existing non-bootstrap roles
+          const patch: Record<string, unknown> = {};
           if (merged.addedFromSecondary > 0) {
             const payload = buildUserProgressWriteData(uid, merged.mastered, merged.hard);
+            patch.mastered = payload.mastered;
+            patch.hard = payload.hard;
+          }
+          if (authEmail && existingEmail !== authEmail) {
+            patch.email = authEmail;
+          }
+          if (!existingName && authName) {
+            patch.displayName = authName;
+          }
+          if (!existingAvatar && authAvatar) {
+            patch.avatarUrl = authAvatar;
+          }
+          if (!hasStoredRole) {
+            patch.role = isBootstrap ? 'superadmin' : 'user';
+          } else if (isBootstrap && data.role !== 'superadmin') {
+            patch.role = 'superadmin';
+          }
+
+          if (Object.keys(patch).length > 0) {
+            patch.updatedAt = serverTimestamp();
             try {
-              await updateDoc(userDocRef, {
-                mastered: payload.mastered,
-                hard: payload.hard,
-                updatedAt: serverTimestamp(),
-              });
+              await updateDoc(userDocRef, patch);
               if (cancelled) return;
-              totalMergedFromLocal += merged.addedFromSecondary;
+              if (merged.addedFromSecondary > 0) {
+                totalMergedFromLocal += merged.addedFromSecondary;
+              }
             } catch (updateErr) {
               if (!cancelled) reportFirestoreFailure(updateErr, OperationType.UPDATE, docPath);
               return;
@@ -502,7 +563,105 @@ export function useCloudProgressSync({
 
         if (cancelled) return;
 
-        // Parent /users/{uid} is now guaranteed to exist; enable lazy quizHistory sync on demand
+        // Bootstrap & subscribe in real time via onSnapshot to all 4 quizHistory buckets
+        for (const dsId of QUIZ_DATASET_IDS) {
+          if (cancelled) return;
+          const historyDocPath = `users/${uid}/quizHistory/${dsId}`;
+          const historyDocRef = doc(db, 'users', uid, 'quizHistory', dsId);
+          const storageKey = QUIZ_HISTORY_KEYS_BY_DATASET[dsId];
+
+          let historySnap;
+          try {
+            historySnap = await getDoc(historyDocRef);
+          } catch (historyGetErr) {
+            if (!cancelled) reportFirestoreFailure(historyGetErr, OperationType.GET, historyDocPath);
+            return;
+          }
+          if (cancelled) return;
+
+          const localEntries = canMergeLocal ? quizHistoriesRef.current[dsId] : [];
+          if (!historySnap.exists()) {
+            quizHistoryCloudExistsRef.current[dsId] = false;
+            quizHistoryLoadedRef.current[dsId] = true;
+            if (localEntries.length > 0) {
+              const payload = buildQuizHistoryWriteData(uid, dsId, localEntries);
+              if (payload.sessions.length > 0) {
+                try {
+                  await setDoc(historyDocRef, {
+                    ...payload,
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp(),
+                  });
+                  if (cancelled) return;
+                  quizHistoryCloudExistsRef.current[dsId] = true;
+                } catch (historyCreateErr) {
+                  if (!cancelled) {
+                    reportFirestoreFailure(historyCreateErr, OperationType.CREATE, historyDocPath);
+                  }
+                  return;
+                }
+              }
+            }
+          } else {
+            quizHistoryCloudExistsRef.current[dsId] = true;
+            const raw = historySnap.data() as { sessions?: unknown };
+            const cloudEntries = decodeQuizHistoryFromCloud(raw.sessions, dsId);
+            const { merged, needsCloudWrite } = mergeQuizHistories(cloudEntries, localEntries);
+
+            if (!areQuizHistoriesEqual(merged, quizHistoriesRef.current[dsId])) {
+              saveQuizHistory(merged, undefined, storageKey);
+              quizHistoriesRef.current = { ...quizHistoriesRef.current, [dsId]: merged };
+              setQuizHistories(prev => ({ ...prev, [dsId]: merged }));
+            }
+            quizHistoryLoadedRef.current[dsId] = true;
+
+            if (needsCloudWrite) {
+              const payload = buildQuizHistoryWriteData(uid, dsId, merged);
+              try {
+                await updateDoc(historyDocRef, {
+                  sessions: payload.sessions,
+                  updatedAt: serverTimestamp(),
+                });
+                if (cancelled) return;
+              } catch (historyUpdateErr) {
+                if (!cancelled) {
+                  reportFirestoreFailure(historyUpdateErr, OperationType.UPDATE, historyDocPath);
+                }
+                return;
+              }
+            }
+          }
+
+          const unsubHistory = onSnapshot(
+            historyDocRef,
+            docSnap => {
+              if (cancelled) return;
+              if (!docSnap.exists()) {
+                quizHistoryCloudExistsRef.current[dsId] = false;
+                return;
+              }
+              quizHistoryCloudExistsRef.current[dsId] = true;
+              quizHistoryLoadedRef.current[dsId] = true;
+              const raw = docSnap.data() as { sessions?: unknown };
+              const cloudEntries = decodeQuizHistoryFromCloud(raw.sessions, dsId);
+              if (!areQuizHistoriesEqual(cloudEntries, quizHistoriesRef.current[dsId])) {
+                saveQuizHistory(cloudEntries, undefined, storageKey);
+                quizHistoriesRef.current = { ...quizHistoriesRef.current, [dsId]: cloudEntries };
+                setQuizHistories(prev => ({ ...prev, [dsId]: cloudEntries }));
+              }
+            },
+            snapErr => {
+              if (!cancelled) {
+                reportFirestoreFailure(snapErr, OperationType.GET, historyDocPath);
+              }
+            }
+          );
+          unsubSnapshots.push(unsubHistory);
+        }
+
+        if (cancelled) return;
+
+        // Parent /users/{uid} and all real-time subcollection listeners are ready
         setCloudReadyUid(uid);
 
         if (justSignedInRef.current) {
@@ -543,6 +702,7 @@ export function useCloudProgressSync({
               hard?: unknown[];
               displayName?: unknown;
               avatarUrl?: unknown;
+              role?: unknown;
             };
             const clean = sanitizeProgressLists(
               Array.isArray(raw.mastered) ? raw.mastered : [],
@@ -564,6 +724,8 @@ export function useCloudProgressSync({
             if (nextAvatar !== customAvatarRef.current) {
               setCustomAvatarUrl(nextAvatar);
             }
+            setUserRole(resolveEffectiveRole(user, raw.role));
+            setRoleResolved(true);
           },
           snapErr => {
             if (!cancelled) {
@@ -611,7 +773,9 @@ export function useCloudProgressSync({
           await setDoc(userDocRef, {
             ...payload,
             displayName: sanitizeDisplayName(customNameRef.current || currentUser.displayName),
+            email: normalizeEmail(currentUser.email),
             avatarUrl: sanitizeAvatarUrl(customAvatarRef.current || currentUser.photoURL),
+            role: isBootstrapSuperAdminEmail(currentUser.email) ? 'superadmin' : 'user',
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           });
@@ -952,7 +1116,9 @@ export function useCloudProgressSync({
               await setDoc(userDocRef, {
                 ...payload,
                 displayName: clean.displayName,
+                email: normalizeEmail(current.email),
                 avatarUrl: clean.avatarUrl,
+                role: isBootstrapSuperAdminEmail(current.email) ? 'superadmin' : 'user',
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
               });
@@ -991,6 +1157,8 @@ export function useCloudProgressSync({
     quizHistoryLoadedRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
     quizHistoryLoadingRef.current = { n4: false, pemula: false, dasar1: false, dasar2: false };
     setCloudReadyUid(null);
+    setUserRole('user');
+    setRoleResolved(true);
     setCustomDisplayName('');
     setCustomAvatarUrl('');
     clearStoredProgress();
@@ -1013,6 +1181,9 @@ export function useCloudProgressSync({
     irodoriProgress,
     quizHistories,
     activeQuizDatasetId,
+    cloudReadyUid,
+    userRole,
+    roleResolved,
     syncing,
     quizHistorySyncing,
     fatalError,

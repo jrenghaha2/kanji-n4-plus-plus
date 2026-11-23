@@ -13,10 +13,13 @@ import {
   LogOut,
   Moon,
   RefreshCw,
+  ShieldCheck,
   Sun,
   Users,
 } from 'lucide-react';
+import type { UserRole } from '../types/admin';
 import type { AppDatasetMode } from '../types/kanji';
+import { ROLE_META, getRoleDisplayBadgeLabel, isAdminOrAbove } from '../utils/rbac';
 
 interface AppHeaderProps {
   datasetMode: AppDatasetMode;
@@ -29,6 +32,7 @@ interface AppHeaderProps {
   restoreBtnRef: RefObject<HTMLButtonElement | null>;
   fileInputRef: RefObject<HTMLInputElement | null>;
   user: User | null;
+  userRole: UserRole;
   displayName: string;
   avatarUrl: string;
   authReady: boolean;
@@ -36,6 +40,7 @@ interface AppHeaderProps {
   syncing: boolean;
   onOpenAuthModal: (isSwitch: boolean) => void;
   onOpenProfileModal: () => void;
+  onOpenAdminPanel: () => void;
   onManualSync: () => void;
   onResendVerification: () => void;
   onRefreshVerification: () => void;
@@ -64,6 +69,7 @@ export function AppHeader({
   restoreBtnRef,
   fileInputRef,
   user,
+  userRole,
   displayName,
   avatarUrl,
   authReady,
@@ -71,6 +77,7 @@ export function AppHeader({
   syncing,
   onOpenAuthModal,
   onOpenProfileModal,
+  onOpenAdminPanel,
   onManualSync,
   onResendVerification,
   onRefreshVerification,
@@ -125,6 +132,8 @@ export function AppHeader({
   const initial = resolvedName.charAt(0).toUpperCase() || 'K';
   const resolvedAvatar = avatarUrl || user?.photoURL || '';
   const isVerified = Boolean(user?.emailVerified);
+  const canOpenAdmin = isVerified && isAdminOrAbove(userRole);
+  const roleBadgeLabel = getRoleDisplayBadgeLabel(userRole, user?.email);
 
   return (
     <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 transition-colors">
@@ -324,6 +333,29 @@ export function AppHeader({
                       {user.email ? (
                         <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{user.email}</p>
                       ) : null}
+                      <p className="text-[11px] font-semibold mt-1 inline-flex items-center gap-1.5">
+                        <ShieldCheck
+                          className={`w-3.5 h-3.5 shrink-0 ${
+                            userRole === 'superadmin'
+                              ? 'text-indigo-600 dark:text-indigo-400'
+                              : userRole === 'admin'
+                                ? 'text-teal-600 dark:text-teal-400'
+                                : 'text-slate-400 dark:text-slate-500'
+                          }`}
+                          aria-hidden="true"
+                        />
+                        <span
+                          className={
+                            userRole === 'superadmin'
+                              ? 'text-indigo-700 dark:text-indigo-300'
+                              : userRole === 'admin'
+                                ? 'text-teal-700 dark:text-teal-300'
+                                : 'text-slate-600 dark:text-slate-300'
+                          }
+                        >
+                          {roleBadgeLabel}
+                        </span>
+                      </p>
                       <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1.5">
                         <span>{getProviderLabel(user)}</span>
                         <span aria-hidden="true">·</span>
@@ -369,6 +401,22 @@ export function AppHeader({
                   ) : null}
 
                   <div className="py-1">
+                    {canOpenAdmin ? (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        id="menuOpenAdminPanel"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          onOpenAdminPanel();
+                        }}
+                        className="w-full px-4 py-2.5 text-left text-sm font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 flex items-center gap-2.5 transition-colors cursor-pointer"
+                      >
+                        <ShieldCheck className="w-4 h-4 shrink-0" aria-hidden="true" />
+                        <span>Buka {ROLE_META[userRole].panelTitle}</span>
+                      </button>
+                    ) : null}
+
                     <button
                       type="button"
                       role="menuitem"

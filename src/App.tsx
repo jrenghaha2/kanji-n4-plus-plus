@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AdminPanel } from './components/admin/AdminPanel';
 import { AppHeader } from './components/AppHeader';
 import { AuthModal } from './components/AuthModal';
 import { FlashcardPanel } from './components/FlashcardPanel';
@@ -6,17 +7,24 @@ import { IrodoriBookMenu } from './components/IrodoriBookMenu';
 import { IrodoriEmptyState } from './components/IrodoriEmptyState';
 import { KanjiListPanel } from './components/KanjiListPanel';
 import { ProfileModal } from './components/ProfileModal';
-import { QuizPanel } from './components/QuizPanel';
+import {
+  QuizPanel,
+  type QuizStartedEventInput,
+  type RecordQuizSessionInput,
+} from './components/QuizPanel';
 import { RestoreModal } from './components/RestoreModal';
 import { Sidebar } from './components/Sidebar';
 import { ToastBanner } from './components/ToastBanner';
 import { IRODORI_BOOKS } from './data/irodoriBooks';
 import { KANJI, VALID_KANJI_IDS } from './data/kanjiData';
+import { useAdminMonitor } from './hooks/useAdminMonitor';
 import { useAuthActions } from './hooks/useAuthActions';
 import { useBackupRestore } from './hooks/useBackupRestore';
 import { useCloudProgressSync } from './hooks/useCloudProgressSync';
+import { useLiveActivityReporter } from './hooks/useLiveActivityReporter';
 import { useTheme } from './hooks/useTheme';
 import { useToast } from './hooks/useToast';
+import type { QuizLiveState } from './types/admin';
 import type {
   AppDatasetMode,
   AppTab,
@@ -25,14 +33,17 @@ import type {
   IrodoriKanjiScope,
   KanjiEntry,
   LevelFilter,
+  QuizDatasetId,
 } from './types/kanji';
+import { DATASET_SHORT_LABELS } from './utils/adminMonitor';
 import {
   IRODORI_KANJI_SCOPE_META,
   countIrodoriKanjiScopes,
   matchesIrodoriKanjiScope,
 } from './utils/irodoriKanjiFilter';
 import { markKanjiHard, markKanjiMastered } from './utils/progressSync';
-import { getPoolIndices, shuffled } from './utils/quizEngine';
+import { calculateQuizScore, getPoolIndices, shuffled } from './utils/quizEngine';
+import { isAdminOrAbove } from './utils/rbac';
 import { speakJP } from './utils/tts';
 
 export default function App() {
@@ -52,6 +63,8 @@ export default function App() {
   const [flipped, setFlipped] = useState(false);
   const [sessionHard, setSessionHard] = useState<Set<number>>(() => new Set());
   const [sessionNewMaster, setSessionNewMaster] = useState(0);
+  const [quizLiveState, setQuizLiveState] = useState<QuizLiveState | null>(null);
+  const lastMilestoneLoggedRef = useRef<number>(0);
 
   const { toast, showToast, dismissToast } = useToast();
   const { isDark, toggleTheme } = useTheme();
@@ -87,6 +100,9 @@ export default function App() {
     irodoriProgress,
     quizHistories,
     activeQuizDatasetId,
+    cloudReadyUid,
+    userRole,
+    roleResolved,
     syncing,
     quizHistorySyncing,
     fatalError,
@@ -139,6 +155,86 @@ export default function App() {
             : ''
         }`
       : levelFilter;
+
+  const effectiveDisplayName =
+    customDisplayName || user?.displayName || user?.email?.split('@')[0] || '';
+  const effectiveAvatarUrl = customAvatarUrl || user?.photoURL || '';
+  const canAccessAdminPanel = Boolean(user && user.emailVerified && isAdminOrAbove(userRole));
+
+  // Route guard: redirect out of Panel Admin/Superadmin immediately if role is revoked or user signs out
+  useEffect(() => {
+    if (activeTab !== 'admin') return;
+    if (!authReady) return;
+    if (!user || !user.emailVerified || (roleResolved && !isAdminOrAbove(userRole))) {
+      setActiveTab('card');
+      showToast(
+        'warning',
+        'Akses Panel Dibatasi',
+        'Peran akun Anda tidak memiliki izin membuka Panel Pemantauan.'
+      );
+    }
+  }, [activeTab, authReady, user, roleResolved, userRole, showToast]);
+
+  const { logActivityEvent, totalMasteredCount } = useLiveActivityReporter({
+    user,
+    cloudReadyUid,
+    userRole,
+    displayName: effectiveDisplayName,
+    avatarUrl: effectiveAvatarUrl,
+    activeTab,
+    datasetMode,
+    irodoriBookId,
+    activeScopeLabel,
+    mastered,
+    hardSet,
+    irodoriProgress,
+    quizHistories,
+    quizLiveState,
+  });
+
+  const adminMonitor = useAdminMonitor({
+    enabled: canAccessAdminPanel && activeTab === 'admin',
+    actorUid: user?.uid ?? null,
+    actorRole: userRole,
+    showToast,
+  });
+
+  const handleQuizStartedEvent = useCallback(
+    (input: QuizStartedEventInput) => {
+      const dsLabel = DATASET_SHORT_LABELS[input.datasetId];
+      void logActivityEvent({
+        eventType: 'quiz_started',
+        datasetId: input.datasetId,
+        moduleLabel: `${dsLabel} · Kuis`,
+        scopeLabel: input.scopeLabel,
+        quizMode: input.mode,
+        total: input.totalQuestions,
+        summary: `Memulai tes ${dsLabel} (${input.totalQuestions} soal · ${input.scopeLabel})`,
+      });
+    },
+    [logActivityEvent]
+  );
+
+  const handleRecordQuizSessionWithEvent = useCallback(
+    (datasetId: QuizDatasetId, input: RecordQuizSessionInput) => {
+      handleRecordQuizSession(datasetId, input);
+      const score = calculateQuizScore(input.correct, input.total);
+      const dsLabel = DATASET_SHORT_LABELS[datasetId];
+      const scope = input.scopeLabel || `Level ${input.level}`;
+      void logActivityEvent({
+        eventType: 'quiz_completed',
+        datasetId,
+        moduleLabel: `${dsLabel} · Kuis`,
+        scopeLabel: scope,
+        quizMode: input.mode,
+        score,
+        correct: input.correct,
+        total: input.total,
+        summary: `Menyelesaikan tes ${dsLabel} dengan skor ${score}% (${input.correct}/${input.total})`,
+      });
+    },
+    [handleRecordQuizSession, logActivityEvent]
+  );
 
   const computeCardPoolFor = useCallback(
     (
@@ -457,10 +553,42 @@ export default function App() {
     );
 
     if (!applyProgressChange(nextMastered, nextHard)) return;
-    if (isNewMastered) setSessionNewMaster(v => v + 1);
+    if (isNewMastered) {
+      setSessionNewMaster(v => v + 1);
+      const nextTotalMastered = totalMasteredCount + 1;
+      const shouldLogMilestone =
+        nextTotalMastered === 1 ||
+        nextTotalMastered % 5 === 0 ||
+        nextTotalMastered - lastMilestoneLoggedRef.current >= 5;
+      if (shouldLogMilestone) {
+        lastMilestoneLoggedRef.current = nextTotalMastered;
+        const dsId: QuizDatasetId = datasetMode === 'irodori' ? irodoriBookId : 'n4';
+        const dsLabel = DATASET_SHORT_LABELS[dsId];
+        void logActivityEvent({
+          eventType: 'progress_milestone',
+          datasetId: dsId,
+          moduleLabel: `${dsLabel} · Kartu`,
+          scopeLabel: activeScopeLabel,
+          totalMastered: nextTotalMastered,
+          summary: `Mencapai ${nextTotalMastered} total kosakata/kanji hafal (${dsLabel})`,
+        });
+      }
+    }
     setPos(p => p + 1);
     setFlipped(false);
-  }, [order, pos, activeDataset, activeMastered, activeHardSet, applyProgressChange]);
+  }, [
+    order,
+    pos,
+    activeDataset,
+    activeMastered,
+    activeHardSet,
+    applyProgressChange,
+    totalMasteredCount,
+    datasetMode,
+    irodoriBookId,
+    activeScopeLabel,
+    logActivityEvent,
+  ]);
 
   const handleMarkHard = useCallback(() => {
     const idx = order[pos];
@@ -678,9 +806,6 @@ export default function App() {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [activeTab, anyModalOpen, pos, order, activeDataset, handleMarkMastered, handleMarkHard]);
 
-  const effectiveDisplayName =
-    customDisplayName || user?.displayName || user?.email?.split('@')[0] || '';
-  const effectiveAvatarUrl = customAvatarUrl || user?.photoURL || '';
   const isIrodoriEmptyBook =
     datasetMode === 'irodori' && activeIrodoriBook.data.length === 0;
 
@@ -698,6 +823,7 @@ export default function App() {
           restoreBtnRef={restoreBtnRef}
           fileInputRef={fileInputRef}
           user={user}
+          userRole={userRole}
           displayName={effectiveDisplayName}
           avatarUrl={effectiveAvatarUrl}
           authReady={authReady}
@@ -705,6 +831,9 @@ export default function App() {
           syncing={syncing}
           onOpenAuthModal={handleOpenAuthModal}
           onOpenProfileModal={() => setProfileModalOpen(true)}
+          onOpenAdminPanel={() => {
+            if (canAccessAdminPanel) setActiveTab('admin');
+          }}
           onManualSync={() => void handleManualSync()}
           onResendVerification={() => void handleResendVerification()}
           onRefreshVerification={() => void handleRefreshVerification()}
@@ -715,7 +844,7 @@ export default function App() {
         />
 
         <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
-          {datasetMode === 'irodori' ? (
+          {datasetMode === 'irodori' && activeTab !== 'admin' ? (
             <IrodoriBookMenu
               selectedBookId={irodoriBookId}
               onSelectBook={handleSelectIrodoriBook}
@@ -731,6 +860,7 @@ export default function App() {
               datasetMode={datasetMode}
               irodoriBook={activeIrodoriBook}
               activeTab={activeTab}
+              userRole={canAccessAdminPanel ? userRole : 'user'}
               levelFilter={levelFilter}
               chapterFilter={chapterFilter}
               irodoriKanjiScope={irodoriKanjiScope}
@@ -740,7 +870,31 @@ export default function App() {
             />
 
             <div className="min-w-0">
-              {isIrodoriEmptyBook ? (
+              {activeTab === 'admin' && canAccessAdminPanel && user ? (
+                <AdminPanel
+                  actorUid={user.uid}
+                  actorRole={userRole}
+                  rows={adminMonitor.rows}
+                  events={adminMonitor.events}
+                  kpis={adminMonitor.kpis}
+                  loading={adminMonitor.loading}
+                  errorMessage={adminMonitor.errorMessage}
+                  hydratingLegacy={adminMonitor.hydratingLegacy}
+                  hydratedCount={adminMonitor.hydratedCount}
+                  legacyTotalCount={adminMonitor.legacyTotalCount}
+                  nowMs={adminMonitor.nowMs}
+                  roleSavingUid={adminMonitor.roleSavingUid}
+                  selectedDetailRow={adminMonitor.selectedDetailRow}
+                  detailData={adminMonitor.detailData}
+                  detailLoading={adminMonitor.detailLoading}
+                  detailError={adminMonitor.detailError}
+                  onOpenUserDetail={adminMonitor.openUserDetail}
+                  onCloseUserDetail={adminMonitor.closeUserDetail}
+                  onUpdateRole={adminMonitor.updateUserRole}
+                />
+              ) : null}
+
+              {activeTab !== 'admin' && isIrodoriEmptyBook ? (
                 <IrodoriEmptyState
                   book={activeIrodoriBook}
                   onSwitchToDasar1={() => handleSelectIrodoriBook('dasar1')}
@@ -813,8 +967,10 @@ export default function App() {
                   quizHistory={quizHistories[activeQuizDatasetId]}
                   cloudSyncEnabled={Boolean(user && user.emailVerified)}
                   quizHistorySyncing={quizHistorySyncing}
-                  onRecordQuizSession={handleRecordQuizSession}
+                  onRecordQuizSession={handleRecordQuizSessionWithEvent}
                   onClearQuizHistory={handleClearQuizHistory}
+                  onQuizLiveStateChange={setQuizLiveState}
+                  onQuizStarted={handleQuizStartedEvent}
                 />
               ) : null}
             </div>

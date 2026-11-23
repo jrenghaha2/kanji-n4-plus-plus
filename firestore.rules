@@ -32,6 +32,39 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    // --- 3-Tier RBAC Helpers (Always require email_verified == true) ---
+    function isBootstrapSuperAdmin() {
+      return isVerifiedUser()
+        && 'email' in request.auth.token
+        && request.auth.token.email is string
+        && request.auth.token.email.lower() == 'jrenghaha2@gmail.com';
+    }
+
+    function hasStoredRole(allowedRoles) {
+      return isVerifiedUser()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && 'role' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in allowedRoles;
+    }
+
+    function isSuperAdmin() {
+      return isBootstrapSuperAdmin() || hasStoredRole(['superadmin']);
+    }
+
+    function isAdminOrAbove() {
+      return isSuperAdmin() || hasStoredRole(['admin', 'superadmin']);
+    }
+
+    function isTargetBootstrapSuperAdmin(targetData) {
+      return 'email' in targetData
+        && targetData.email is string
+        && targetData.email.lower() == 'jrenghaha2@gmail.com';
+    }
+
+    function isValidRoleValue(val) {
+      return val is string && val in ['user', 'admin', 'superadmin'];
+    }
+
     function isValidKanjiId(val) {
       return val is string
         && val.size() >= 2
@@ -39,13 +72,7 @@ service cloud.firestore {
         && val.matches('^n([1-9]|[1-9][0-9]|[1-4][0-9]{2}|500)$');
     }
 
-    // Full-array validation without loops:
-    // 1. Enforces list type, max size (<= 500), and unique elements via toSet().
-    // 2. Validates EVERY element via dual-separator join (',' and '|'):
-    //    - Any non-string element fails join() with a runtime deny.
-    //    - Because valid IDs contain only [n0-9], checking BOTH ',' and '|'
-    //      mathematically prevents separator injection (e.g. ["n1", "n2,n3"] or ["n1", "n2|n3"])
-    //      and rejects any malicious/invalid element at ANY index (e.g. index 2 or 499).
+    // Full-array validation without loops via uniqueness (toSet) + dual-separator join (',' and '|')
     function isValidKanjiList(arr) {
       return arr is list
         && arr.size() <= 500
@@ -67,6 +94,14 @@ service cloud.firestore {
 
     function isValidQuizDatasetId(datasetId) {
       return datasetId is string && datasetId in ['n4', 'pemula', 'dasar1', 'dasar2'];
+    }
+
+    function isValidOptionalQuizDatasetId(datasetId) {
+      return datasetId is string && datasetId in ['', 'n4', 'pemula', 'dasar1', 'dasar2'];
+    }
+
+    function isValidOptionalQuizMode(mode) {
+      return mode is string && mode in ['', 'random', 'random5', 'k2r', 'k2m', 'm2k', 'r2k', 'ex2k'];
     }
 
     function isValidIrodoriPemulaList(arr) {
@@ -123,10 +158,6 @@ service cloud.firestore {
         || (bookId == 'dasar2' && isValidIrodoriDasar2List(arr));
     }
 
-    // Full-array validation for compact ID-reference quiz session tokens (<= 15 sessions, <= 160 KB joined):
-    // Format: id|completedAt|level|mode|correct|total|score|scopeCode|answersPacked
-    // Uses dual-separator join (',' and '~') so every element (indices 0..14) is strictly validated
-    // against pure ASCII token syntax with zero free-form text or HTML/XSS risk.
     function isValidQuizSessionToken(val) {
       return val is string
         && val.size() >= 25
@@ -149,32 +180,62 @@ service cloud.firestore {
         );
     }
 
+    function isValidDisplayNameField(val) {
+      return val is string && val.size() <= 60;
+    }
+
+    function isValidEmailField(val) {
+      return val is string && val.size() <= 160;
+    }
+
+    function isValidAvatarUrlValue(val) {
+      return val is string
+        && val.size() <= 20000
+        && (val.size() == 0
+          || val.matches('^https://.*')
+          || val.matches('^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$'));
+    }
+
     function isValidDisplayName(data) {
-      return !('displayName' in data)
-        || (data.displayName is string && data.displayName.size() <= 60);
+      return !('displayName' in data) || isValidDisplayNameField(data.displayName);
+    }
+
+    function isValidEmail(data) {
+      return !('email' in data) || isValidEmailField(data.email);
     }
 
     function isValidAvatarUrl(data) {
-      return !('avatarUrl' in data)
-        || (data.avatarUrl is string
-          && data.avatarUrl.size() <= 20000
-          && (data.avatarUrl.size() == 0
-            || data.avatarUrl.matches('^https://.*')
-            || data.avatarUrl.matches('^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$')));
+      return !('avatarUrl' in data) || isValidAvatarUrlValue(data.avatarUrl);
     }
 
-    // Standalone Validation Blueprint for UserProgress (safe for both create and update)
-    function isValidUserProgress(data) {
+    function isValidOptionalRole(data) {
+      return !('role' in data) || isValidRoleValue(data.role);
+    }
+
+    function isOwnerEmailMatch(data) {
+      return !('email' in data)
+        || data.email == ''
+        || (
+          'email' in request.auth.token
+          && request.auth.token.email is string
+          && data.email.lower() == request.auth.token.email.lower()
+        );
+    }
+
+    // Standalone Validation Blueprint for UserProgress (safe for both create and update, including Superadmin role updates)
+    function isValidUserProgress(data, userId) {
       return data.keys().hasAll(['uid', 'mastered', 'hard', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['uid', 'mastered', 'hard', 'displayName', 'avatarUrl', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'mastered', 'hard', 'displayName', 'email', 'avatarUrl', 'role', 'createdAt', 'updatedAt'])
         && data.uid is string
         && isValidId(data.uid)
-        && data.uid == request.auth.uid
+        && data.uid == userId
         && isValidKanjiList(data.mastered)
         && isValidKanjiList(data.hard)
         && data.mastered.toSet().intersection(data.hard.toSet()).size() == 0
         && isValidDisplayName(data)
+        && isValidEmail(data)
         && isValidAvatarUrl(data)
+        && isValidOptionalRole(data)
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -209,54 +270,170 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    // Standalone Validation Blueprint for LiveActivity
+    function isValidLiveActivity(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'displayName', 'email', 'avatarUrl', 'role',
+          'activityType', 'datasetMode', 'datasetId', 'moduleLabel', 'scopeLabel',
+          'quizInProgress', 'quizCurrentQuestion', 'quizTotalQuestions', 'quizCorrectCount', 'quizMode',
+          'totalMastered', 'totalHard', 'n4Mastered', 'irodoriMastered',
+          'totalQuizSessions', 'lastQuizScore', 'lastQuizTotal', 'lastQuizDatasetId', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'displayName', 'email', 'avatarUrl', 'role',
+          'activityType', 'datasetMode', 'datasetId', 'moduleLabel', 'scopeLabel',
+          'quizInProgress', 'quizCurrentQuestion', 'quizTotalQuestions', 'quizCorrectCount', 'quizMode',
+          'totalMastered', 'totalHard', 'n4Mastered', 'irodoriMastered',
+          'totalQuizSessions', 'lastQuizScore', 'lastQuizTotal', 'lastQuizDatasetId', 'updatedAt'
+        ])
+        && data.uid is string
+        && isValidId(data.uid)
+        && data.uid == request.auth.uid
+        && data.uid == userId
+        && isValidDisplayNameField(data.displayName)
+        && isValidEmailField(data.email)
+        && isOwnerEmailMatch(data)
+        && isValidAvatarUrlValue(data.avatarUrl)
+        && isValidRoleValue(data.role)
+        && data.activityType is string
+        && data.activityType in ['browsing', 'flashcard', 'list', 'quiz_setup', 'quiz_running', 'quiz_result', 'admin_panel']
+        && data.datasetMode is string
+        && data.datasetMode in ['n4', 'irodori']
+        && isValidQuizDatasetId(data.datasetId)
+        && data.moduleLabel is string && data.moduleLabel.size() <= 120
+        && data.scopeLabel is string && data.scopeLabel.size() <= 120
+        && data.quizInProgress is bool
+        && data.quizCurrentQuestion is int && data.quizCurrentQuestion >= 0 && data.quizCurrentQuestion <= 500
+        && data.quizTotalQuestions is int && data.quizTotalQuestions >= 0 && data.quizTotalQuestions <= 500
+        && data.quizCorrectCount is int && data.quizCorrectCount >= 0 && data.quizCorrectCount <= 500
+        && isValidOptionalQuizMode(data.quizMode)
+        && data.totalMastered is int && data.totalMastered >= 0 && data.totalMastered <= 5000
+        && data.totalHard is int && data.totalHard >= 0 && data.totalHard <= 5000
+        && data.n4Mastered is int && data.n4Mastered >= 0 && data.n4Mastered <= 500
+        && data.irodoriMastered is int && data.irodoriMastered >= 0 && data.irodoriMastered <= 4000
+        && data.totalQuizSessions is int && data.totalQuizSessions >= 0 && data.totalQuizSessions <= 5000
+        && data.lastQuizScore is int && data.lastQuizScore >= -1 && data.lastQuizScore <= 100
+        && data.lastQuizTotal is int && data.lastQuizTotal >= 0 && data.lastQuizTotal <= 500
+        && isValidOptionalQuizDatasetId(data.lastQuizDatasetId)
+        && data.updatedAt is timestamp;
+    }
+
+    // Standalone Validation Blueprint for ActivityEvent (immutable append-only)
+    function isValidActivityEvent(data) {
+      return data.keys().hasAll([
+          'uid', 'displayName', 'email', 'avatarUrl', 'eventType',
+          'datasetId', 'moduleLabel', 'scopeLabel', 'quizMode',
+          'score', 'correct', 'total', 'totalMastered', 'summary', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'displayName', 'email', 'avatarUrl', 'eventType',
+          'datasetId', 'moduleLabel', 'scopeLabel', 'quizMode',
+          'score', 'correct', 'total', 'totalMastered', 'summary', 'createdAt'
+        ])
+        && data.uid is string
+        && isValidId(data.uid)
+        && data.uid == request.auth.uid
+        && isValidDisplayNameField(data.displayName)
+        && isValidEmailField(data.email)
+        && isOwnerEmailMatch(data)
+        && isValidAvatarUrlValue(data.avatarUrl)
+        && data.eventType is string
+        && data.eventType in ['quiz_started', 'quiz_completed', 'progress_milestone']
+        && isValidQuizDatasetId(data.datasetId)
+        && data.moduleLabel is string && data.moduleLabel.size() <= 120
+        && data.scopeLabel is string && data.scopeLabel.size() <= 120
+        && isValidOptionalQuizMode(data.quizMode)
+        && data.score is int && data.score >= -1 && data.score <= 100
+        && data.correct is int && data.correct >= 0 && data.correct <= 500
+        && data.total is int && data.total >= 0 && data.total <= 500
+        && data.totalMastered is int && data.totalMastered >= 0 && data.totalMastered <= 5000
+        && data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 200
+        && data.createdAt is timestamp;
+    }
+
+    function isSafeOwnerRoleOnCreate(data) {
+      return !('role' in data)
+        || data.role == 'user'
+        || (isBootstrapSuperAdmin() && data.role == 'superadmin');
+    }
+
+    function isSafeOwnerRoleOnUpdate(inc, ex) {
+      return !('role' in inc.diff(ex).affectedKeys())
+        || (
+          !('role' in ex)
+          && (inc.role == 'user' || (isBootstrapSuperAdmin() && inc.role == 'superadmin'))
+        )
+        || (
+          isBootstrapSuperAdmin() && inc.role == 'superadmin'
+        );
+    }
+
     // --- /users/{userId} ---
     match /users/{userId} {
       allow get: if isSignedIn()
         && isValidId(userId)
-        && isOwner(userId);
+        && (isOwner(userId) || isAdminOrAbove());
 
-      allow list: if false;
+      allow list: if isAdminOrAbove();
 
       allow create: if isSignedIn()
         && isVerifiedUser()
         && isValidId(userId)
         && isOwner(userId)
-        && isValidUserProgress(incoming())
-        && incoming().uid == userId
+        && isValidUserProgress(incoming(), userId)
+        && isSafeOwnerRoleOnCreate(incoming())
+        && isOwnerEmailMatch(incoming())
         && incoming().createdAt == request.time
         && incoming().updatedAt == request.time;
 
       allow update: if isSignedIn()
         && isVerifiedUser()
         && isValidId(userId)
-        && isOwner(userId)
-        && isValidUserProgress(incoming())
+        && isValidUserProgress(incoming(), userId)
         && incoming().uid == existing().uid
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time
         && (
-          // Action 1: Progress-only sync
-          incoming().diff(existing()).affectedKeys().hasOnly(['mastered', 'hard', 'updatedAt']) ||
-          // Action 2: Profile-only update
-          incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'avatarUrl', 'updatedAt']) ||
-          // Action 3: Combined progress + profile update
-          incoming().diff(existing()).affectedKeys().hasOnly(['mastered', 'hard', 'displayName', 'avatarUrl', 'updatedAt'])
+          // Action 1..4: Verified owner updates own progress/profile/auto-heal metadata (cannot escalate role)
+          (
+            isOwner(userId)
+            && isOwnerEmailMatch(incoming())
+            && isSafeOwnerRoleOnUpdate(incoming(), existing())
+            && (
+              incoming().diff(existing()).affectedKeys().hasOnly(['mastered', 'hard', 'updatedAt']) ||
+              incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'avatarUrl', 'updatedAt']) ||
+              incoming().diff(existing()).affectedKeys().hasOnly(['mastered', 'hard', 'displayName', 'avatarUrl', 'updatedAt']) ||
+              incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'avatarUrl', 'email', 'role', 'mastered', 'hard', 'updatedAt'])
+            )
+          ) ||
+          // Action 5: Superadmin manages role of another user (cannot modify self or Bootstrap Superadmin)
+          (
+            userId != request.auth.uid
+            && isSuperAdmin()
+            && !isTargetBootstrapSuperAdmin(existing())
+            && 'role' in incoming()
+            && isValidRoleValue(incoming().role)
+            && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'updatedAt'])
+          )
         );
 
       allow delete: if isSignedIn()
         && isVerifiedUser()
         && isValidId(userId)
-        && isOwner(userId);
+        && isOwner(userId)
+        && !isTargetBootstrapSuperAdmin(existing());
 
       // --- /users/{userId}/irodoriProgress/{bookId} ---
       match /irodoriProgress/{bookId} {
         allow get: if isSignedIn()
           && isValidId(userId)
-          && isOwner(userId)
           && isValidIrodoriBookId(bookId)
+          && (isOwner(userId) || isAdminOrAbove())
           && exists(/databases/$(database)/documents/users/$(userId));
 
-        allow list: if false;
+        allow list: if isSignedIn()
+          && isValidId(userId)
+          && isAdminOrAbove();
 
         allow create: if isSignedIn()
           && isVerifiedUser()
@@ -294,11 +471,13 @@ service cloud.firestore {
       match /quizHistory/{datasetId} {
         allow get: if isSignedIn()
           && isValidId(userId)
-          && isOwner(userId)
           && isValidQuizDatasetId(datasetId)
+          && (isOwner(userId) || isAdminOrAbove())
           && exists(/databases/$(database)/documents/users/$(userId));
 
-        allow list: if false;
+        allow list: if isSignedIn()
+          && isValidId(userId)
+          && isAdminOrAbove();
 
         allow create: if isSignedIn()
           && isVerifiedUser()
@@ -331,6 +510,61 @@ service cloud.firestore {
           && isValidQuizDatasetId(datasetId)
           && exists(/databases/$(database)/documents/users/$(userId));
       }
+    }
+
+    // --- /liveActivity/{userId} ---
+    match /liveActivity/{userId} {
+      allow get: if isSignedIn()
+        && isValidId(userId)
+        && (isOwner(userId) || isAdminOrAbove());
+
+      allow list: if isAdminOrAbove();
+
+      allow create: if isSignedIn()
+        && isVerifiedUser()
+        && isValidId(userId)
+        && isOwner(userId)
+        && isValidLiveActivity(incoming(), userId)
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/users/$(userId));
+
+      allow update: if isSignedIn()
+        && isVerifiedUser()
+        && isValidId(userId)
+        && isOwner(userId)
+        && isValidLiveActivity(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'displayName', 'email', 'avatarUrl', 'role',
+          'activityType', 'datasetMode', 'datasetId', 'moduleLabel', 'scopeLabel',
+          'quizInProgress', 'quizCurrentQuestion', 'quizTotalQuestions', 'quizCorrectCount', 'quizMode',
+          'totalMastered', 'totalHard', 'n4Mastered', 'irodoriMastered',
+          'totalQuizSessions', 'lastQuizScore', 'lastQuizTotal', 'lastQuizDatasetId', 'updatedAt'
+        ]);
+
+      allow delete: if isSignedIn()
+        && isVerifiedUser()
+        && isValidId(userId)
+        && isOwner(userId);
+    }
+
+    // --- /activityEvents/{eventId} ---
+    match /activityEvents/{eventId} {
+      allow get: if isSignedIn()
+        && isValidId(eventId)
+        && (isAdminOrAbove() || existing().uid == request.auth.uid);
+
+      allow list: if isAdminOrAbove();
+
+      allow create: if isSignedIn()
+        && isVerifiedUser()
+        && isValidId(eventId)
+        && isValidActivityEvent(incoming())
+        && incoming().createdAt == request.time
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+
+      allow update, delete: if false;
     }
   }
 }

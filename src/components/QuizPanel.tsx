@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { IRODORI_BOOKS } from '../data/irodoriBooks';
 import { IRODORI_CHAPTER_NUMBERS } from '../data/irodoriShared';
 import { KANJI, LEVELS } from '../data/kanjiData';
+import type { QuizLiveState } from '../types/admin';
 import type {
   AppDatasetMode,
   IrodoriBookConfig,
@@ -58,6 +59,13 @@ export interface RecordQuizSessionInput {
   answers?: QuizAnswerSnapshot[];
 }
 
+export interface QuizStartedEventInput {
+  datasetId: QuizDatasetId;
+  scopeLabel: string;
+  mode: QuizTypeChoice;
+  totalQuestions: number;
+}
+
 interface QuizPanelProps {
   datasetMode?: AppDatasetMode;
   irodoriBook?: IrodoriBookConfig;
@@ -70,6 +78,8 @@ interface QuizPanelProps {
   quizHistorySyncing?: boolean;
   onRecordQuizSession?: (datasetId: QuizDatasetId, input: RecordQuizSessionInput) => void;
   onClearQuizHistory?: (datasetId: QuizDatasetId) => void;
+  onQuizLiveStateChange?: (state: QuizLiveState | null) => void;
+  onQuizStarted?: (input: QuizStartedEventInput) => void;
 }
 
 type QuizStage = 'setup' | 'run' | 'result';
@@ -86,6 +96,8 @@ export function QuizPanel({
   quizHistorySyncing = false,
   onRecordQuizSession,
   onClearQuizHistory,
+  onQuizLiveStateChange,
+  onQuizStarted,
 }: QuizPanelProps) {
   const activeDataset = datasetMode === 'irodori' ? irodoriBook.data : KANJI;
   const activeDatasetId: QuizDatasetId = datasetMode === 'irodori' ? irodoriBook.id : 'n4';
@@ -246,6 +258,36 @@ export function QuizPanel({
     }
   }, [stage, rightList, wrongList, onRecordQuizSession]);
 
+  // Report live quiz progress to real-time activity monitor
+  useEffect(() => {
+    if (!onQuizLiveStateChange) return;
+    onQuizLiveStateChange({
+      inProgress: stage === 'run',
+      stage,
+      currentQuestion: stage === 'run' ? Math.min(pos + 1, questions.length) : 0,
+      totalQuestions: stage === 'run' ? questions.length : 0,
+      correctCount: stage === 'run' ? rightList.length : 0,
+      mode: stage === 'run' ? activeSessionMetaRef.current.mode : '',
+      datasetId: activeDatasetId,
+      scopeLabel:
+        stage === 'run' ? activeSessionMetaRef.current.scopeLabel : activeScopeLabel,
+    });
+  }, [
+    onQuizLiveStateChange,
+    stage,
+    pos,
+    questions.length,
+    rightList.length,
+    activeDatasetId,
+    activeScopeLabel,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      onQuizLiveStateChange?.(null);
+    };
+  }, [onQuizLiveStateChange]);
+
   const performanceStats = useMemo(
     () => computeQuizPerformanceStats(quizHistory),
     [quizHistory]
@@ -301,6 +343,12 @@ export function QuizPanel({
       setSelectedIdx(null);
       setWrongFeedback(null);
       setStage('run');
+      onQuizStarted?.({
+        datasetId: activeDatasetId,
+        scopeLabel: activeScopeLabel,
+        mode: quizTypeChoice,
+        totalQuestions: session.length,
+      });
     },
     [
       activeDatasetId,
@@ -313,6 +361,7 @@ export function QuizPanel({
       kanjiEntryFilter,
       activeScopeLabel,
       historyStorageKey,
+      onQuizStarted,
     ]
   );
 

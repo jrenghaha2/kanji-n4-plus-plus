@@ -59,7 +59,7 @@ const BLUEPRINT_PATH = path.resolve(process.cwd(), 'firebase-blueprint.json');
 
 interface MockAuth {
   uid: string;
-  token: { email_verified: boolean };
+  token: { email_verified: boolean; email?: string };
 }
 
 interface MockProgressDoc {
@@ -67,36 +67,79 @@ interface MockProgressDoc {
   mastered?: unknown;
   hard?: unknown;
   displayName?: unknown;
+  email?: unknown;
   avatarUrl?: unknown;
+  role?: unknown;
   createdAt?: unknown;
   updatedAt?: unknown;
   [extra: string]: unknown;
 }
 
 const SERVER_TIME = Symbol('request.time');
+const BOOTSTRAP_EMAIL = 'jrenghaha2@gmail.com';
+const VALID_ROLES = new Set(['user', 'admin', 'superadmin']);
+
+function isMockBootstrapSuperAdmin(auth: MockAuth | null): boolean {
+  return (
+    auth !== null &&
+    auth.token.email_verified === true &&
+    typeof auth.token.email === 'string' &&
+    auth.token.email.toLowerCase() === BOOTSTRAP_EMAIL
+  );
+}
+
+function isMockSuperAdmin(auth: MockAuth | null, actorStoredRole?: unknown): boolean {
+  return (
+    isMockBootstrapSuperAdmin(auth) ||
+    (auth !== null && auth.token.email_verified === true && actorStoredRole === 'superadmin')
+  );
+}
+
+function isMockAdminOrAbove(auth: MockAuth | null, actorStoredRole?: unknown): boolean {
+  return (
+    isMockSuperAdmin(auth, actorStoredRole) ||
+    (auth !== null &&
+      auth.token.email_verified === true &&
+      (actorStoredRole === 'admin' || actorStoredRole === 'superadmin'))
+  );
+}
+
+function isTargetBootstrap(docData?: MockProgressDoc): boolean {
+  return (
+    typeof docData?.email === 'string' &&
+    docData.email.toLowerCase() === BOOTSTRAP_EMAIL
+  );
+}
 
 function simulateRulesDecision(
   op: 'get' | 'list' | 'create' | 'update' | 'delete',
   auth: MockAuth | null,
   pathUserId: string,
   incoming?: MockProgressDoc,
-  existing?: MockProgressDoc
+  existing?: MockProgressDoc,
+  actorStoredRole?: unknown
 ): 'ALLOW' | 'PERMISSION_DENIED' {
   const isSignedIn = auth !== null;
   const isVerifiedUser = isSignedIn && auth.token.email_verified === true;
   const isValidId = (id: unknown): id is string =>
     typeof id === 'string' && id.length >= 1 && id.length <= UID_MAX_LENGTH && UID_PATTERN.test(id);
   const isOwner = isSignedIn && auth.uid === pathUserId;
+  const isSuper = isMockSuperAdmin(auth, actorStoredRole);
+  const isAdmin = isMockAdminOrAbove(auth, actorStoredRole);
 
-  if (op === 'list') return 'PERMISSION_DENIED';
+  if (op === 'list') return isAdmin ? 'ALLOW' : 'PERMISSION_DENIED';
   if (op === 'get') {
-    return isSignedIn && isValidId(pathUserId) && isOwner ? 'ALLOW' : 'PERMISSION_DENIED';
+    return isSignedIn && isValidId(pathUserId) && (isOwner || isAdmin)
+      ? 'ALLOW'
+      : 'PERMISSION_DENIED';
   }
   if (op === 'delete') {
-    return isVerifiedUser && isValidId(pathUserId) && isOwner ? 'ALLOW' : 'PERMISSION_DENIED';
+    return isVerifiedUser && isValidId(pathUserId) && isOwner && !isTargetBootstrap(existing)
+      ? 'ALLOW'
+      : 'PERMISSION_DENIED';
   }
 
-  if (!incoming || !isVerifiedUser || !isValidId(pathUserId) || !isOwner) {
+  if (!incoming || !isVerifiedUser || !isValidId(pathUserId)) {
     return 'PERMISSION_DENIED';
   }
 
@@ -106,7 +149,9 @@ function simulateRulesDecision(
     'mastered',
     'hard',
     'displayName',
+    'email',
     'avatarUrl',
+    'role',
     'createdAt',
     'updatedAt',
   ]);
@@ -117,7 +162,7 @@ function simulateRulesDecision(
   if (!keys.every(k => allowedKeys.has(k))) {
     return 'PERMISSION_DENIED';
   }
-  if (!isValidId(incoming.uid) || incoming.uid !== auth.uid) {
+  if (!isValidId(incoming.uid) || incoming.uid !== pathUserId) {
     return 'PERMISSION_DENIED';
   }
   if (
@@ -127,7 +172,19 @@ function simulateRulesDecision(
   ) {
     return 'PERMISSION_DENIED';
   }
+  if (
+    incoming.email !== undefined &&
+    (typeof incoming.email !== 'string' || incoming.email.length > 160)
+  ) {
+    return 'PERMISSION_DENIED';
+  }
   if (incoming.avatarUrl !== undefined && !isValidAvatarUrl(incoming.avatarUrl)) {
+    return 'PERMISSION_DENIED';
+  }
+  if (
+    incoming.role !== undefined &&
+    (typeof incoming.role !== 'string' || !VALID_ROLES.has(incoming.role))
+  ) {
     return 'PERMISSION_DENIED';
   }
 
@@ -136,8 +193,6 @@ function simulateRulesDecision(
   const pipeJoinedPattern =
     /^n([1-9]|[1-9][0-9]|[1-4][0-9]{2}|500)(\|n([1-9]|[1-9][0-9]|[1-4][0-9]{2}|500))*$/;
 
-  // Mirrors firestore.rules isValidKanjiList() verbatim: validates EVERY element via
-  // string type enforcement, uniqueness (toSet), and dual-separator join (',' and '|').
   const checkList = (arr: unknown): arr is string[] => {
     if (!Array.isArray(arr) || arr.length > MAX_KANJI_LIST_SIZE) return false;
     if (new Set(arr).size !== arr.length) return false;
@@ -158,15 +213,27 @@ function simulateRulesDecision(
     return 'PERMISSION_DENIED';
   }
 
-  // Mutual exclusivity between mastered and hard (mirrors toSet().intersection(...).size() == 0)
   const hardSet = new Set(incoming.hard);
   if (incoming.mastered.some(id => hardSet.has(id))) {
     return 'PERMISSION_DENIED';
   }
 
+  const ownerEmailOk =
+    incoming.email === undefined ||
+    incoming.email === '' ||
+    (typeof auth.token.email === 'string' &&
+      typeof incoming.email === 'string' &&
+      incoming.email.toLowerCase() === auth.token.email.toLowerCase());
+
   if (op === 'create') {
+    const safeRoleOnCreate =
+      incoming.role === undefined ||
+      incoming.role === 'user' ||
+      (isMockBootstrapSuperAdmin(auth) && incoming.role === 'superadmin');
     if (
-      incoming.uid === pathUserId &&
+      isOwner &&
+      safeRoleOnCreate &&
+      ownerEmailOk &&
       incoming.createdAt === SERVER_TIME &&
       incoming.updatedAt === SERVER_TIME
     ) {
@@ -176,29 +243,55 @@ function simulateRulesDecision(
   }
 
   if (!existing) return 'PERMISSION_DENIED';
-  const changedKeys = keys.filter(k => incoming[k] !== existing[k]);
-  const progressKeys = new Set(['mastered', 'hard', 'updatedAt']);
-  const profileKeys = new Set(['displayName', 'avatarUrl', 'updatedAt']);
-  const combinedKeys = new Set(['mastered', 'hard', 'displayName', 'avatarUrl', 'updatedAt']);
-  const validAction =
-    changedKeys.every(k => progressKeys.has(k)) ||
-    changedKeys.every(k => profileKeys.has(k)) ||
-    changedKeys.every(k => combinedKeys.has(k));
-
-  if (!validAction) {
+  if (
+    incoming.uid !== existing.uid ||
+    incoming.createdAt !== existing.createdAt ||
+    incoming.updatedAt !== SERVER_TIME
+  ) {
     return 'PERMISSION_DENIED';
   }
+
+  const allKeys = Array.from(new Set([...Object.keys(incoming), ...Object.keys(existing)]));
+  const changedKeys = allKeys.filter(k => incoming[k] !== existing[k]);
+
+  // Action 1..4: Owner updates own progress/profile/auto-heal metadata
+  if (isOwner && ownerEmailOk) {
+    const roleChanged = changedKeys.includes('role');
+    const safeRoleOnUpdate =
+      !roleChanged ||
+      (existing.role === undefined &&
+        (incoming.role === 'user' ||
+          (isMockBootstrapSuperAdmin(auth) && incoming.role === 'superadmin'))) ||
+      (isMockBootstrapSuperAdmin(auth) && incoming.role === 'superadmin');
+
+    const ownerAllowedSets = [
+      new Set(['mastered', 'hard', 'updatedAt']),
+      new Set(['displayName', 'avatarUrl', 'updatedAt']),
+      new Set(['mastered', 'hard', 'displayName', 'avatarUrl', 'updatedAt']),
+      new Set(['displayName', 'avatarUrl', 'email', 'role', 'mastered', 'hard', 'updatedAt']),
+    ];
+    if (safeRoleOnUpdate && ownerAllowedSets.some(s => changedKeys.every(k => s.has(k)))) {
+      return 'ALLOW';
+    }
+  }
+
+  // Action 5: Superadmin manages role of another user (cannot modify self or Bootstrap Superadmin)
+  const superRoleKeys = new Set(['role', 'updatedAt']);
   if (
-    incoming.uid === existing.uid &&
-    incoming.createdAt === existing.createdAt &&
-    incoming.updatedAt === SERVER_TIME
+    pathUserId !== auth.uid &&
+    isSuper &&
+    !isTargetBootstrap(existing) &&
+    typeof incoming.role === 'string' &&
+    VALID_ROLES.has(incoming.role) &&
+    changedKeys.every(k => superRoleKeys.has(k))
   ) {
     return 'ALLOW';
   }
+
   return 'PERMISSION_DENIED';
 }
 
-test('firestore.rules file implements all Eight Pillars gates and matches firebase-blueprint.json', () => {
+test('firestore.rules file implements all Eight Pillars gates, 3-Tier RBAC, and matches firebase-blueprint.json', () => {
   const rulesText = fs.readFileSync(RULES_PATH, 'utf8');
   const blueprint = JSON.parse(fs.readFileSync(BLUEPRINT_PATH, 'utf8')) as {
     entities: {
@@ -206,9 +299,13 @@ test('firestore.rules file implements all Eight Pillars gates and matches fireba
         properties: {
           uid: { maxLength: number };
           displayName: { maxLength: number };
+          email: { maxLength: number };
           avatarUrl: { maxLength: number };
+          role: { enum: string[] };
         };
       };
+      LiveActivity: Record<string, unknown>;
+      ActivityEvent: Record<string, unknown>;
     };
     firestore: Record<string, unknown>;
   };
@@ -216,20 +313,35 @@ test('firestore.rules file implements all Eight Pillars gates and matches fireba
   assert.ok(rulesText.includes("rules_version = '2';"));
   assert.ok(rulesText.includes('match /{document=**}'));
   assert.ok(rulesText.includes('allow read, write: if false;'));
-  assert.ok(rulesText.includes('allow list: if false;'));
+  assert.ok(rulesText.includes('allow list: if isAdminOrAbove();'));
   assert.ok(rulesText.includes('request.auth.token.email_verified == true'));
-  assert.ok(rulesText.includes('isValidUserProgress(incoming())'));
+  assert.ok(rulesText.includes("request.auth.token.email.lower() == 'jrenghaha2@gmail.com'"));
+  assert.ok(rulesText.includes('function isBootstrapSuperAdmin()'));
+  assert.ok(rulesText.includes('function isSuperAdmin()'));
+  assert.ok(rulesText.includes('function isAdminOrAbove()'));
+  assert.ok(rulesText.includes('function isTargetBootstrapSuperAdmin(targetData)'));
+  assert.ok(rulesText.includes('isValidUserProgress(incoming(), userId)'));
   assert.ok(rulesText.includes(`id.size() <= ${blueprint.entities.UserProgress.properties.uid.maxLength}`));
   assert.ok(
     rulesText.includes(
-      `data.displayName.size() <= ${blueprint.entities.UserProgress.properties.displayName.maxLength}`
+      `val.size() <= ${blueprint.entities.UserProgress.properties.displayName.maxLength}`
     )
   );
   assert.ok(
     rulesText.includes(
-      `data.avatarUrl.size() <= ${blueprint.entities.UserProgress.properties.avatarUrl.maxLength}`
+      `val.size() <= ${blueprint.entities.UserProgress.properties.email.maxLength}`
     )
   );
+  assert.ok(
+    rulesText.includes(
+      `val.size() <= ${blueprint.entities.UserProgress.properties.avatarUrl.maxLength}`
+    )
+  );
+  assert.deepEqual(blueprint.entities.UserProgress.properties.role.enum, [
+    'user',
+    'admin',
+    'superadmin',
+  ]);
   assert.ok(rulesText.includes('arr.toSet().size() == arr.size()'));
   assert.ok(rulesText.includes("arr.join(',').size() <= 2500"));
   assert.ok(rulesText.includes("arr.join(',').matches("));
@@ -260,6 +372,17 @@ test('firestore.rules file implements all Eight Pillars gates and matches fireba
   assert.ok(rulesText.includes('isValidQuizHistoryBucket(incoming(), datasetId)'));
   assert.ok(rulesText.includes("arr.join('~').matches("));
   assert.ok(rulesText.includes('exists(/databases/$(database)/documents/users/$(userId))'));
+
+  // LiveActivity & ActivityEvent blueprint & rules gates
+  assert.ok(Boolean(blueprint.entities.LiveActivity));
+  assert.ok(Boolean(blueprint.entities.ActivityEvent));
+  assert.ok(Object.prototype.hasOwnProperty.call(blueprint.firestore, '/liveActivity/{userId}'));
+  assert.ok(Object.prototype.hasOwnProperty.call(blueprint.firestore, '/activityEvents/{eventId}'));
+  assert.ok(rulesText.includes('match /liveActivity/{userId}'));
+  assert.ok(rulesText.includes('isValidLiveActivity(incoming(), userId)'));
+  assert.ok(rulesText.includes('match /activityEvents/{eventId}'));
+  assert.ok(rulesText.includes('isValidActivityEvent(incoming())'));
+  assert.ok(rulesText.includes('allow update, delete: if false;'));
 });
 
 test('Dirty Dozen adversarial payloads and unsafe profile inputs result in PERMISSION_DENIED', () => {
@@ -1086,3 +1209,177 @@ test('QuizHistory subcollection rules enforce Master Gate, full-array token vali
     'PERMISSION_DENIED'
   );
 });
+
+test('3-Tier RBAC rules enforce Bootstrap Superadmin protection, read-only Admin, and block self-escalation', () => {
+  const bootstrapAuth: MockAuth = {
+    uid: 'boot_uid',
+    token: { email_verified: true, email: 'jrenghaha2@gmail.com' },
+  };
+  const spoofedBootstrapAuth: MockAuth = {
+    uid: 'spoof_uid',
+    token: { email_verified: false, email: 'jrenghaha2@gmail.com' },
+  };
+  const super2Auth: MockAuth = {
+    uid: 'super2_uid',
+    token: { email_verified: true, email: 'super2@example.com' },
+  };
+  const adminAuth: MockAuth = {
+    uid: 'admin_uid',
+    token: { email_verified: true, email: 'admin@example.com' },
+  };
+  const userAuth: MockAuth = {
+    uid: 'user_uid',
+    token: { email_verified: true, email: 'user@example.com' },
+  };
+
+  const userDoc: MockProgressDoc = {
+    uid: 'user_uid',
+    mastered: ['n1'],
+    hard: [],
+    email: 'user@example.com',
+    role: 'user',
+    createdAt: SERVER_TIME,
+    updatedAt: SERVER_TIME,
+  };
+  const legacyUserDoc: MockProgressDoc = {
+    uid: 'user_uid',
+    mastered: ['n1'],
+    hard: [],
+    createdAt: SERVER_TIME,
+    updatedAt: SERVER_TIME,
+  };
+  const bootDoc: MockProgressDoc = {
+    uid: 'boot_uid',
+    mastered: ['n1'],
+    hard: [],
+    email: 'jrenghaha2@gmail.com',
+    role: 'superadmin',
+    createdAt: SERVER_TIME,
+    updatedAt: SERVER_TIME,
+  };
+  const super2Doc: MockProgressDoc = {
+    uid: 'super2_uid',
+    mastered: [],
+    hard: [],
+    email: 'super2@example.com',
+    role: 'superadmin',
+    createdAt: SERVER_TIME,
+    updatedAt: SERVER_TIME,
+  };
+
+  // Unverified spoof of Bootstrap Superadmin MUST be denied list/read/create
+  assert.equal(simulateRulesDecision('list', spoofedBootstrapAuth, 'user_uid'), 'PERMISSION_DENIED');
+  assert.equal(simulateRulesDecision('get', spoofedBootstrapAuth, 'user_uid'), 'PERMISSION_DENIED');
+  assert.equal(
+    simulateRulesDecision('create', spoofedBootstrapAuth, 'spoof_uid', {
+      ...bootDoc,
+      uid: 'spoof_uid',
+    }),
+    'PERMISSION_DENIED'
+  );
+
+  // Regular user cannot self-escalate on create or update
+  assert.equal(
+    simulateRulesDecision('create', userAuth, 'user_uid', { ...userDoc, role: 'admin' }),
+    'PERMISSION_DENIED'
+  );
+  assert.equal(
+    simulateRulesDecision('create', userAuth, 'user_uid', { ...userDoc, role: 'superadmin' }),
+    'PERMISSION_DENIED'
+  );
+  assert.equal(
+    simulateRulesDecision('update', userAuth, 'user_uid', { ...userDoc, role: 'admin' }, userDoc, 'user'),
+    'PERMISSION_DENIED'
+  );
+  assert.equal(simulateRulesDecision('list', userAuth, 'user_uid', undefined, undefined, 'user'), 'PERMISSION_DENIED');
+
+  // Legacy user auto-heal initializing role='user' + matching email MUST succeed
+  assert.equal(
+    simulateRulesDecision(
+      'update',
+      userAuth,
+      'user_uid',
+      { ...legacyUserDoc, email: 'user@example.com', role: 'user', displayName: 'Siswa' },
+      legacyUserDoc,
+      undefined
+    ),
+    'ALLOW'
+  );
+  // Legacy user auto-heal attempting role='admin' MUST deny
+  assert.equal(
+    simulateRulesDecision(
+      'update',
+      userAuth,
+      'user_uid',
+      { ...legacyUserDoc, email: 'user@example.com', role: 'admin' },
+      legacyUserDoc,
+      undefined
+    ),
+    'PERMISSION_DENIED'
+  );
+  // Owner forging someone else's email (bootstrap email) MUST deny
+  assert.equal(
+    simulateRulesDecision(
+      'update',
+      userAuth,
+      'user_uid',
+      { ...legacyUserDoc, email: 'jrenghaha2@gmail.com', role: 'user' },
+      legacyUserDoc,
+      undefined
+    ),
+    'PERMISSION_DENIED'
+  );
+
+  // Bootstrap Superadmin creating/auto-healing own doc with role='superadmin' MUST succeed
+  assert.equal(simulateRulesDecision('create', bootstrapAuth, 'boot_uid', bootDoc), 'ALLOW');
+  assert.equal(
+    simulateRulesDecision('list', bootstrapAuth, 'user_uid'),
+    'ALLOW'
+  );
+
+  // Admin has read-only access (list & get allowed), CANNOT modify roles
+  assert.equal(simulateRulesDecision('list', adminAuth, 'user_uid', undefined, undefined, 'admin'), 'ALLOW');
+  assert.equal(simulateRulesDecision('get', adminAuth, 'user_uid', undefined, undefined, 'admin'), 'ALLOW');
+  assert.equal(
+    simulateRulesDecision('update', adminAuth, 'user_uid', { ...userDoc, role: 'admin' }, userDoc, 'admin'),
+    'PERMISSION_DENIED'
+  );
+
+  // Superadmin can promote/demote another user via ['role', 'updatedAt'] ONLY
+  assert.equal(
+    simulateRulesDecision('update', bootstrapAuth, 'user_uid', { ...userDoc, role: 'admin' }, userDoc, 'superadmin'),
+    'ALLOW'
+  );
+  assert.equal(
+    simulateRulesDecision('update', bootstrapAuth, 'user_uid', { ...userDoc, role: 'superadmin' }, userDoc, 'superadmin'),
+    'ALLOW'
+  );
+  // Superadmin CANNOT touch non-role fields on another user
+  assert.equal(
+    simulateRulesDecision(
+      'update',
+      bootstrapAuth,
+      'user_uid',
+      { ...userDoc, role: 'admin', mastered: ['n1', 'n2'] },
+      userDoc,
+      'superadmin'
+    ),
+    'PERMISSION_DENIED'
+  );
+  // Superadmin CANNOT demote self
+  assert.equal(
+    simulateRulesDecision('update', super2Auth, 'super2_uid', { ...super2Doc, role: 'user' }, super2Doc, 'superadmin'),
+    'PERMISSION_DENIED'
+  );
+  // Secondary Superadmin CANNOT demote Bootstrap Superadmin
+  assert.equal(
+    simulateRulesDecision('update', super2Auth, 'boot_uid', { ...bootDoc, role: 'user' }, bootDoc, 'superadmin'),
+    'PERMISSION_DENIED'
+  );
+  // Bootstrap Superadmin doc cannot be deleted
+  assert.equal(
+    simulateRulesDecision('delete', bootstrapAuth, 'boot_uid', undefined, bootDoc, 'superadmin'),
+    'PERMISSION_DENIED'
+  );
+});
+

@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
-import { BookOpen, FileText, HelpCircle, Layers } from 'lucide-react';
+import { BookOpen, FileText, HelpCircle, Layers, ShieldCheck } from 'lucide-react';
 import { IRODORI_BOOKS } from '../data/irodoriBooks';
 import { IRODORI_CHAPTER_NUMBERS } from '../data/irodoriShared';
 import { KANJI, LEVEL_KEYS, LEVELS } from '../data/kanjiData';
+import type { UserRole } from '../types/admin';
 import type {
   AppDatasetMode,
   AppTab,
@@ -16,11 +17,13 @@ import {
   IRODORI_KANJI_SCOPE_META,
   matchesIrodoriKanjiScope,
 } from '../utils/irodoriKanjiFilter';
+import { ROLE_META, isAdminOrAbove } from '../utils/rbac';
 
 interface SidebarProps {
   datasetMode: AppDatasetMode;
   irodoriBook?: IrodoriBookConfig;
   activeTab: AppTab;
+  userRole?: UserRole;
   levelFilter: LevelFilter;
   chapterFilter: IrodoriChapterFilter;
   irodoriKanjiScope?: IrodoriKanjiScope;
@@ -33,6 +36,7 @@ export function Sidebar({
   datasetMode,
   irodoriBook = IRODORI_BOOKS.dasar1,
   activeTab,
+  userRole = 'user',
   levelFilter,
   chapterFilter,
   irodoriKanjiScope = 'all',
@@ -79,10 +83,20 @@ export function Sidebar({
     return groups;
   }, [irodoriBook.chapters]);
 
+  const canAccessAdmin = isAdminOrAbove(userRole);
   const tabs: { key: AppTab; label: string; icon: typeof Layers }[] = [
     { key: 'card', label: 'Kartu', icon: Layers },
     { key: 'list', label: 'Daftar', icon: BookOpen },
     { key: 'quiz', label: 'Kuis', icon: HelpCircle },
+    ...(canAccessAdmin
+      ? [
+          {
+            key: 'admin' as const,
+            label: ROLE_META[userRole].panelTitle || 'Panel Admin',
+            icon: ShieldCheck,
+          },
+        ]
+      : []),
   ];
 
   const activeChapterMeta =
@@ -94,7 +108,7 @@ export function Sidebar({
       <nav
         aria-label="Tampilan utama"
         role="tablist"
-        className="grid grid-cols-3 lg:grid-cols-1 gap-1.5 bg-slate-200/70 dark:bg-slate-800/80 p-1.5 rounded-xl"
+        className={`grid ${canAccessAdmin ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'} lg:grid-cols-1 gap-1.5 bg-slate-200/70 dark:bg-slate-800/80 p-1.5 rounded-xl`}
       >
         {tabs.map(({ key, label, icon: Icon }) => {
           const active = activeTab === key;
@@ -112,13 +126,22 @@ export function Sidebar({
               }`}
             >
               <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
-              <span>{label}</span>
+              <span className="truncate">{label}</span>
             </button>
           );
         })}
       </nav>
 
-      {datasetMode === 'n4' ? (
+      {activeTab === 'admin' ? (
+        <div className="hidden lg:block rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 space-y-1.5">
+          <div className="text-xs font-bold text-slate-900 dark:text-slate-100">
+            {ROLE_META[userRole].panelTitle}
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+            {ROLE_META[userRole].description}
+          </p>
+        </div>
+      ) : datasetMode === 'n4' ? (
         <div>
           <div
             role="tablist"

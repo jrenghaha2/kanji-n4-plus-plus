@@ -1,6 +1,6 @@
 export type DifficultyLevel = 'easy' | 'medium' | 'hard';
 export type LevelFilter = 'all' | DifficultyLevel;
-export type AppTab = 'card' | 'list' | 'quiz';
+export type AppTab = 'card' | 'list' | 'quiz' | 'admin';
 export type AppDatasetMode = 'n4' | 'irodori';
 
 export type IrodoriChapterNumber =

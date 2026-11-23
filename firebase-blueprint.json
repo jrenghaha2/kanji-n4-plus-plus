@@ -2,7 +2,7 @@
   "entities": {
     "UserProgress": {
       "title": "UserProgress",
-      "description": "Progres belajar kanji JLPT N4 dan profil tampilan per pengguna.",
+      "description": "Progres belajar kanji JLPT N4, metadata profil, email, dan peran RBAC (user, admin, superadmin) per pengguna.",
       "type": "object",
       "properties": {
         "uid": {
@@ -10,7 +10,7 @@
           "minLength": 1,
           "maxLength": 128,
           "pattern": "^[a-zA-Z0-9_\\-]+$",
-          "description": "Firebase Auth UID pemilik progres."
+          "description": "Firebase Auth UID pemilik dokumen."
         },
         "mastered": {
           "type": "array",
@@ -24,14 +24,25 @@
           "type": "string",
           "minLength": 0,
           "maxLength": 60,
-          "description": "Nama tampilan kustom pengguna (opsional, maksimal 60 karakter)."
+          "description": "Nama tampilan pengguna (opsional, maksimal 60 karakter)."
+        },
+        "email": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 160,
+          "description": "Alamat email akun Firebase Auth pengguna (opsional untuk kompatibilitas dokumen lama, maksimal 160 karakter)."
         },
         "avatarUrl": {
           "type": "string",
           "minLength": 0,
           "maxLength": 20000,
           "pattern": "^(|https://.*|data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+)$",
-          "description": "URL HTTPS atau data URI gambar terkompresi (JPEG/PNG/WebP) untuk foto profil kustom."
+          "description": "URL HTTPS atau data URI gambar terkompresi (JPEG/PNG/WebP) untuk foto profil."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["user", "admin", "superadmin"],
+          "description": "Peran akses 3 tingkat pengguna: user (Pembelajar), admin (Admin Pantau read-only), atau superadmin."
         },
         "createdAt": {
           "type": "string",
@@ -117,6 +128,260 @@
         }
       },
       "required": ["uid", "datasetId", "sessions", "createdAt", "updatedAt"]
+    },
+    "LiveActivity": {
+      "title": "LiveActivity",
+      "description": "Status aktivitas belajar real-time, progres kuis berjalan, dan ringkasan statistik per pengguna untuk Panel Pemantauan Admin/Superadmin.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID pemilik aktivitas."
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 60,
+          "description": "Nama tampilan pengguna."
+        },
+        "email": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 160,
+          "description": "Email pengguna."
+        },
+        "avatarUrl": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 20000,
+          "pattern": "^(|https://.*|data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+)$",
+          "description": "Foto profil pengguna."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["user", "admin", "superadmin"],
+          "description": "Snapshot peran pengguna untuk tampilan (otorisasi tetap merujuk /users/{uid})."
+        },
+        "activityType": {
+          "type": "string",
+          "enum": ["browsing", "flashcard", "list", "quiz_setup", "quiz_running", "quiz_result", "admin_panel"],
+          "description": "Jenis aktivitas yang sedang dibuka pengguna."
+        },
+        "datasetMode": {
+          "type": "string",
+          "enum": ["n4", "irodori"],
+          "description": "Mode materi aktif (n4 atau irodori)."
+        },
+        "datasetId": {
+          "type": "string",
+          "enum": ["n4", "pemula", "dasar1", "dasar2"],
+          "description": "Dataset materi aktif."
+        },
+        "moduleLabel": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 120,
+          "description": "Label modul/menu yang sedang dibuka."
+        },
+        "scopeLabel": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 120,
+          "description": "Cakupan level atau bab yang sedang dipelajari."
+        },
+        "quizInProgress": {
+          "type": "boolean",
+          "description": "Menandakan apakah pengguna sedang mengerjakan tes/kuis."
+        },
+        "quizCurrentQuestion": {
+          "type": "integer",
+          "description": "Nomor soal yang sedang dikerjakan (0..500)."
+        },
+        "quizTotalQuestions": {
+          "type": "integer",
+          "description": "Total soal pada sesi kuis berjalan (0..500)."
+        },
+        "quizCorrectCount": {
+          "type": "integer",
+          "description": "Jumlah jawaban benar sementara pada sesi kuis berjalan (0..500)."
+        },
+        "quizMode": {
+          "type": "string",
+          "enum": ["", "random", "random5", "k2r", "k2m", "m2k", "r2k", "ex2k"],
+          "description": "Model soal kuis yang sedang berjalan."
+        },
+        "totalMastered": {
+          "type": "integer",
+          "description": "Total kosakata/kanji hafal (N4 + semua buku Irodori)."
+        },
+        "totalHard": {
+          "type": "integer",
+          "description": "Total kosakata/kanji ditandai sulit (N4 + semua buku Irodori)."
+        },
+        "n4Mastered": {
+          "type": "integer",
+          "description": "Jumlah kanji N4 yang sudah dihafal (0..500)."
+        },
+        "irodoriMastered": {
+          "type": "integer",
+          "description": "Jumlah kosakata Irodori yang sudah dihafal (0..4000)."
+        },
+        "totalQuizSessions": {
+          "type": "integer",
+          "description": "Total sesi tes/kuis yang telah diselesaikan."
+        },
+        "lastQuizScore": {
+          "type": "integer",
+          "description": "Skor persentase tes terakhir (-1 jika belum pernah tes, 0..100)."
+        },
+        "lastQuizTotal": {
+          "type": "integer",
+          "description": "Jumlah soal pada tes terakhir (0..500)."
+        },
+        "lastQuizDatasetId": {
+          "type": "string",
+          "enum": ["", "n4", "pemula", "dasar1", "dasar2"],
+          "description": "Dataset pada sesi tes terakhir."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp heartbeat/pembaruan terakhir di server Firestore."
+        }
+      },
+      "required": [
+        "uid",
+        "displayName",
+        "email",
+        "avatarUrl",
+        "role",
+        "activityType",
+        "datasetMode",
+        "datasetId",
+        "moduleLabel",
+        "scopeLabel",
+        "quizInProgress",
+        "quizCurrentQuestion",
+        "quizTotalQuestions",
+        "quizCorrectCount",
+        "quizMode",
+        "totalMastered",
+        "totalHard",
+        "n4Mastered",
+        "irodoriMastered",
+        "totalQuizSessions",
+        "lastQuizScore",
+        "lastQuizTotal",
+        "lastQuizDatasetId",
+        "updatedAt"
+      ]
+    },
+    "ActivityEvent": {
+      "title": "ActivityEvent",
+      "description": "Log kronologis kejadian penting (mulai tes, selesai tes beserta skor & cakupan materi, atau pencapaian progres) bersifat append-only.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID pelaku kejadian."
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 60,
+          "description": "Nama tampilan pengguna saat kejadian."
+        },
+        "email": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 160,
+          "description": "Email pengguna saat kejadian."
+        },
+        "avatarUrl": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 20000,
+          "pattern": "^(|https://.*|data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+)$",
+          "description": "Foto profil pengguna saat kejadian."
+        },
+        "eventType": {
+          "type": "string",
+          "enum": ["quiz_started", "quiz_completed", "progress_milestone"],
+          "description": "Kategori kejadian aktivitas."
+        },
+        "datasetId": {
+          "type": "string",
+          "enum": ["n4", "pemula", "dasar1", "dasar2"],
+          "description": "Dataset materi terkait kejadian."
+        },
+        "moduleLabel": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 120,
+          "description": "Label modul terkait kejadian."
+        },
+        "scopeLabel": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 120,
+          "description": "Cakupan materi (level/bab)."
+        },
+        "quizMode": {
+          "type": "string",
+          "enum": ["", "random", "random5", "k2r", "k2m", "m2k", "r2k", "ex2k"],
+          "description": "Model kuis terkait (kosong untuk milestone progres)."
+        },
+        "score": {
+          "type": "integer",
+          "description": "Skor persentase (-1 jika bukan selesai tes, 0..100)."
+        },
+        "correct": {
+          "type": "integer",
+          "description": "Jumlah jawaban benar (0..500)."
+        },
+        "total": {
+          "type": "integer",
+          "description": "Total soal (0..500)."
+        },
+        "totalMastered": {
+          "type": "integer",
+          "description": "Total hafalan kumulatif saat kejadian (0..5000)."
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "Ringkasan kejadian singkat yang aman ditampilkan di Feed Kejadian."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp server Firestore saat kejadian tercatat."
+        }
+      },
+      "required": [
+        "uid",
+        "displayName",
+        "email",
+        "avatarUrl",
+        "eventType",
+        "datasetId",
+        "moduleLabel",
+        "scopeLabel",
+        "quizMode",
+        "score",
+        "correct",
+        "total",
+        "totalMastered",
+        "summary",
+        "createdAt"
+      ]
     }
   },
   "firestore": {
@@ -124,19 +389,31 @@
       "schema": {
         "$ref": "#/entities/UserProgress"
       },
-      "description": "Dokumen progres kanji JLPT N4 dan profil tampilan milik masing-masing pengguna terautentikasi, diisolasi per userId."
+      "description": "Dokumen progres kanji JLPT N4, profil, email, dan peran RBAC (user/admin/superadmin) milik pengguna terautentikasi."
     },
     "/users/{userId}/irodoriProgress/{bookId}": {
       "schema": {
         "$ref": "#/entities/IrodoriBookProgress"
       },
-      "description": "Dokumen progres kosakata Irodori per buku (pemula, dasar1, dasar2) milik pengguna terautentikasi, diisolasi per userId dan bookId."
+      "description": "Dokumen progres kosakata Irodori per buku (pemula, dasar1, dasar2) milik pengguna terautentikasi."
     },
     "/users/{userId}/quizHistory/{datasetId}": {
       "schema": {
         "$ref": "#/entities/QuizHistoryBucket"
       },
-      "description": "Dokumen riwayat kuis dan snapshot jawaban berbasis referensi ID (maksimal 15 sesi) per dataset (n4, pemula, dasar1, dasar2) milik pengguna terautentikasi."
+      "description": "Dokumen riwayat kuis dan snapshot jawaban berbasis referensi ID (maksimal 15 sesi) per dataset (n4, pemula, dasar1, dasar2)."
+    },
+    "/liveActivity/{userId}": {
+      "schema": {
+        "$ref": "#/entities/LiveActivity"
+      },
+      "description": "Status presence real-time, aktivitas belajar/kuis berjalan, dan ringkasan progres per pengguna."
+    },
+    "/activityEvents/{eventId}": {
+      "schema": {
+        "$ref": "#/entities/ActivityEvent"
+      },
+      "description": "Log kronologis append-only kejadian belajar & tes pengguna untuk Feed Kejadian Panel Admin/Superadmin."
     }
   }
 }
