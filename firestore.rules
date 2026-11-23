@@ -104,6 +104,18 @@ service cloud.firestore {
       return mode is string && mode in ['', 'random', 'random5', 'k2r', 'k2m', 'm2k', 'r2k', 'ex2k'];
     }
 
+    function isValidQuizCurrentToken(val) {
+      return val is string
+        && val.size() <= 120
+        && val.matches('^(|[1-9][0-9]{0,2}\\|(k2r|k2m|m2k|r2k|ex2k)\\|(n|irp|ir|ir2_)[1-9][0-9]{0,3}\\|(n|irp|ir|ir2_)[1-9][0-9]{0,3}(,(n|irp|ir|ir2_)[1-9][0-9]{0,3}){0,3}\\|(-1|[0-3]))$');
+    }
+
+    function isValidQuizLiveLog(val) {
+      return val is string
+        && val.size() <= 15000
+        && val.matches('^(|[1-9][0-9]{0,2}\\|(k2r|k2m|m2k|r2k|ex2k)\\|(n|irp|ir|ir2_)[1-9][0-9]{0,3}\\|(n|irp|ir|ir2_)[1-9][0-9]{0,3}(,(n|irp|ir|ir2_)[1-9][0-9]{0,3}){0,3}\\|[0-3](;[1-9][0-9]{0,2}\\|(k2r|k2m|m2k|r2k|ex2k)\\|(n|irp|ir|ir2_)[1-9][0-9]{0,3}\\|(n|irp|ir|ir2_)[1-9][0-9]{0,3}(,(n|irp|ir|ir2_)[1-9][0-9]{0,3}){0,3}\\|[0-3])*)$');
+    }
+
     function isValidIrodoriPemulaList(arr) {
       return arr is list
         && arr.size() <= 1136
@@ -283,6 +295,7 @@ service cloud.firestore {
           'uid', 'displayName', 'email', 'avatarUrl', 'role',
           'activityType', 'datasetMode', 'datasetId', 'moduleLabel', 'scopeLabel',
           'quizInProgress', 'quizCurrentQuestion', 'quizTotalQuestions', 'quizCorrectCount', 'quizMode',
+          'quizCurrentToken', 'quizLiveLog',
           'totalMastered', 'totalHard', 'n4Mastered', 'irodoriMastered',
           'totalQuizSessions', 'lastQuizScore', 'lastQuizTotal', 'lastQuizDatasetId', 'updatedAt'
         ])
@@ -307,6 +320,8 @@ service cloud.firestore {
         && data.quizTotalQuestions is int && data.quizTotalQuestions >= 0 && data.quizTotalQuestions <= 500
         && data.quizCorrectCount is int && data.quizCorrectCount >= 0 && data.quizCorrectCount <= 500
         && isValidOptionalQuizMode(data.quizMode)
+        && (!('quizCurrentToken' in data) || isValidQuizCurrentToken(data.quizCurrentToken))
+        && (!('quizLiveLog' in data) || isValidQuizLiveLog(data.quizLiveLog))
         && data.totalMastered is int && data.totalMastered >= 0 && data.totalMastered <= 5000
         && data.totalHard is int && data.totalHard >= 0 && data.totalHard <= 5000
         && data.n4Mastered is int && data.n4Mastered >= 0 && data.n4Mastered <= 500
@@ -539,6 +554,7 @@ service cloud.firestore {
           'displayName', 'email', 'avatarUrl', 'role',
           'activityType', 'datasetMode', 'datasetId', 'moduleLabel', 'scopeLabel',
           'quizInProgress', 'quizCurrentQuestion', 'quizTotalQuestions', 'quizCorrectCount', 'quizMode',
+          'quizCurrentToken', 'quizLiveLog',
           'totalMastered', 'totalHard', 'n4Mastered', 'irodoriMastered',
           'totalQuizSessions', 'lastQuizScore', 'lastQuizTotal', 'lastQuizDatasetId', 'updatedAt'
         ]);

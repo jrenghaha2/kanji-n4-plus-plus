@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ArrowUpDown, Eye, Search } from 'lucide-react';
+import { ArrowUpDown, ChevronDown, ChevronUp, Eye, Radio, Search } from 'lucide-react';
 import type {
   AdminPresenceStatus,
   AdminSortOption,
@@ -13,6 +13,7 @@ import {
   sortMonitoredUsers,
 } from '../../utils/adminMonitor';
 import { getRoleDisplayBadgeLabel } from '../../utils/rbac';
+import { LiveQuizMonitorCard } from './LiveQuizMonitorCard';
 
 interface AdminRealtimeTabProps {
   rows: readonly MonitoredUserRow[];
@@ -34,6 +35,14 @@ export function AdminRealtimeTab({ rows, nowMs, onOpenDetail }: AdminRealtimeTab
   const [search, setSearch] = useState('');
   const [presenceFilter, setPresenceFilter] = useState<PresenceFilter>('all');
   const [sortBy, setSortBy] = useState<AdminSortOption>('recent');
+  const [collapsedLiveUids, setCollapsedLiveUids] = useState<Record<string, boolean>>({});
+
+  const toggleLiveInspector = (uid: string) => {
+    setCollapsedLiveUids(prev => ({
+      ...prev,
+      [uid]: !prev[uid],
+    }));
+  };
 
   const counts = useMemo(() => {
     let online = 0;
@@ -152,11 +161,21 @@ export function AdminRealtimeTab({ rows, nowMs, onOpenDetail }: AdminRealtimeTab
                   )
                 : 0;
 
+            const hasLiveQuizView = Boolean(
+              row.liveQuizCurrent || row.liveQuizLog.length > 0
+            );
+            const isLiveExpanded =
+              hasLiveQuizView &&
+              (row.quizInProgress
+                ? !collapsedLiveUids[row.uid]
+                : Boolean(collapsedLiveUids[row.uid]));
+
             return (
               <div
                 key={row.uid}
-                className="p-4 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4"
+                className="p-4 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors space-y-3"
               >
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 {/* Left: identity + live module */}
                 <div className="flex items-start gap-3 min-w-0 flex-1">
                   {row.avatarUrl ? (
@@ -280,15 +299,41 @@ export function AdminRealtimeTab({ rows, nowMs, onOpenDetail }: AdminRealtimeTab
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => onOpenDetail(row)}
-                    className="min-h-[38px] px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:border-indigo-300 dark:hover:border-indigo-700 text-slate-700 dark:text-slate-200 hover:text-indigo-700 dark:hover:text-indigo-300 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-                  >
-                    <Eye className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                    <span>Detail</span>
-                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {hasLiveQuizView ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleLiveInspector(row.uid)}
+                        aria-expanded={isLiveExpanded}
+                        className={`min-h-[38px] px-3 py-1.5 rounded-xl border text-xs font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                          row.quizInProgress
+                            ? 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-200'
+                            : 'border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-200'
+                        }`}
+                      >
+                        <Radio className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                        <span>{isLiveExpanded ? 'Tutup Soal' : 'Pantau Soal'}</span>
+                        {isLiveExpanded ? (
+                          <ChevronUp className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                        ) : (
+                          <ChevronDown className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                        )}
+                      </button>
+                    ) : null}
+
+                    <button
+                      type="button"
+                      onClick={() => onOpenDetail(row)}
+                      className="min-h-[38px] px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:border-indigo-300 dark:hover:border-indigo-700 text-slate-700 dark:text-slate-200 hover:text-indigo-700 dark:hover:text-indigo-300 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                    >
+                      <Eye className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                      <span>Detail</span>
+                    </button>
+                  </div>
                 </div>
+                </div>
+
+                {isLiveExpanded ? <LiveQuizMonitorCard row={row} /> : null}
               </div>
             );
           })}

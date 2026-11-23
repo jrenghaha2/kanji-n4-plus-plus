@@ -12,6 +12,12 @@ import {
   sortMonitoredUsers,
 } from './adminMonitor';
 import {
+  decodeLiveQuizLog,
+  decodeLiveQuizToken,
+  encodeLiveQuizLog,
+  encodeLiveQuizToken,
+} from './liveQuizSync';
+import {
   BOOTSTRAP_SUPERADMIN_EMAIL,
   canManageUserRole,
   getRoleDisplayBadgeLabel,
@@ -221,6 +227,8 @@ test('mergeUserMonitoringRows, computeAdminKpis, sortMonitoredUsers (all 5 modes
       quizTotalQuestions: 0,
       quizCorrectCount: 0,
       quizMode: '',
+      quizCurrentToken: '',
+      quizLiveLog: '',
       totalMastered: 65,
       totalHard: 7,
       n4Mastered: 40,
@@ -247,6 +255,8 @@ test('mergeUserMonitoringRows, computeAdminKpis, sortMonitoredUsers (all 5 modes
       quizTotalQuestions: 10,
       quizCorrectCount: 3,
       quizMode: 'k2m',
+      quizCurrentToken: '4|k2m|ir1|ir2,ir1,ir3,ir4|-1',
+      quizLiveLog: '1|k2m|ir5|ir5,ir6,ir7,ir8|0;2|k2m|ir9|ir10,ir9,ir11,ir12|0',
       totalMastered: 20,
       totalHard: 2,
       n4Mastered: 15,
@@ -273,6 +283,8 @@ test('mergeUserMonitoringRows, computeAdminKpis, sortMonitoredUsers (all 5 modes
       quizTotalQuestions: 0,
       quizCorrectCount: 0,
       quizMode: '',
+      quizCurrentToken: '',
+      quizLiveLog: '',
       totalMastered: 10,
       totalHard: 1,
       n4Mastered: 10,
@@ -374,4 +386,97 @@ test('mergeUserMonitoringRows, computeAdminKpis, sortMonitoredUsers (all 5 modes
     filterMonitoredUsers(rows, { roleFilter: 'superadmin' }).map(r => r.uid),
     ['u_boot']
   );
+
+  // Verify live quiz current question and answered log decoded on active quiz row
+  const liveQuizRow = rows.find(r => r.uid === 'u_live_quiz')!;
+  assert.ok(liveQuizRow.liveQuizCurrent);
+  assert.equal(liveQuizRow.liveQuizCurrent?.no, 4);
+  assert.equal(liveQuizRow.liveQuizCurrent?.answered, false);
+  assert.equal(liveQuizRow.liveQuizCurrent?.options.length, 4);
+  assert.equal(liveQuizRow.liveQuizCurrent?.correctOption?.letter, 'B');
+  assert.equal(liveQuizRow.liveQuizLog.length, 2);
+  assert.equal(liveQuizRow.liveQuizLog[0].isCorrect, true);
+  assert.equal(liveQuizRow.liveQuizLog[1].isCorrect, false);
 });
+
+test('liveQuizSync encodes and deterministically decodes current question, A-D options, chosen answer, and Benar/Salah verdict', () => {
+  const tokenUnanswered = encodeLiveQuizToken(
+    {
+      no: 3,
+      type: 'k2m',
+      itemId: 'n1',
+      optionIds: ['n2', 'n1', 'n3', 'n4'],
+      chosenIdx: -1,
+    },
+    'n4'
+  );
+  assert.equal(tokenUnanswered, '3|k2m|n1|n2,n1,n3,n4|-1');
+
+  const decodedUnanswered = decodeLiveQuizToken(tokenUnanswered, 'n4');
+  assert.ok(decodedUnanswered);
+  assert.equal(decodedUnanswered?.no, 3);
+  assert.equal(decodedUnanswered?.answered, false);
+  assert.equal(decodedUnanswered?.isCorrect, null);
+  assert.equal(decodedUnanswered?.options.length, 4);
+  assert.equal(decodedUnanswered?.correctOption?.letter, 'B');
+  assert.equal(decodedUnanswered?.chosenOption, null);
+
+  // User picks wrong option (A -> n2)
+  const tokenWrong = encodeLiveQuizToken(
+    {
+      no: 3,
+      type: 'k2m',
+      itemId: 'n1',
+      optionIds: ['n2', 'n1', 'n3', 'n4'],
+      chosenIdx: 0,
+    },
+    'n4'
+  );
+  const decodedWrong = decodeLiveQuizToken(tokenWrong, 'n4');
+  assert.ok(decodedWrong);
+  assert.equal(decodedWrong?.answered, true);
+  assert.equal(decodedWrong?.isCorrect, false);
+  assert.equal(decodedWrong?.chosenOption?.letter, 'A');
+  assert.equal(decodedWrong?.correctOption?.letter, 'B');
+
+  // User picks correct option in ex2k sentence blank mode
+  const tokenEx2k = encodeLiveQuizToken(
+    {
+      no: 1,
+      type: 'ex2k',
+      itemId: 'n5',
+      optionIds: ['n5', 'n6', 'n7', 'n8'],
+      chosenIdx: 0,
+    },
+    'n4'
+  );
+  const decodedEx2k = decodeLiveQuizToken(tokenEx2k, 'n4');
+  assert.ok(decodedEx2k);
+  assert.equal(decodedEx2k?.answered, true);
+  assert.equal(decodedEx2k?.isCorrect, true);
+  assert.equal(decodedEx2k?.chosenOption?.letter, 'A');
+  assert.ok(Boolean(decodedEx2k?.promptSub));
+
+  // Encode & decode multi-question live answered log (rejects unanswered -1 entries)
+  const logStr = encodeLiveQuizLog(
+    [
+      { no: 1, type: 'k2r', itemId: 'n1', optionIds: ['n1', 'n2', 'n3', 'n4'], chosenIdx: 0 },
+      { no: 2, type: 'm2k', itemId: 'n5', optionIds: ['n6', 'n5', 'n7', 'n8'], chosenIdx: 2 },
+      { no: 3, type: 'r2k', itemId: 'n9', optionIds: ['n9', 'n10', 'n11', 'n12'], chosenIdx: -1 },
+    ],
+    'n4'
+  );
+  assert.equal(logStr, '1|k2r|n1|n1,n2,n3,n4|0;2|m2k|n5|n6,n5,n7,n8|2');
+  const decodedLog = decodeLiveQuizLog(logStr, 'n4');
+  assert.equal(decodedLog.length, 2);
+  assert.equal(decodedLog[0].isCorrect, true);
+  assert.equal(decodedLog[1].isCorrect, false);
+  assert.equal(decodedLog[1].chosenOption?.letter, 'C');
+  assert.equal(decodedLog[1].correctOption?.letter, 'B');
+
+  // Malicious / invalid tokens are rejected safely
+  assert.equal(decodeLiveQuizToken('<script>alert(1)</script>', 'n4'), null);
+  assert.equal(decodeLiveQuizToken('1|k2m|n1|n1,n2,n3,n4|5', 'n4'), null);
+  assert.deepEqual(decodeLiveQuizLog('1|k2m|n1|n1,n2,n3,n4|-1', 'n4'), []);
+});
+

@@ -23,6 +23,7 @@ import type {
   QuizTypeChoice,
 } from '../types/kanji';
 import { DATASET_SHORT_LABELS } from '../utils/adminMonitor';
+import { encodeLiveQuizLog, encodeLiveQuizToken } from '../utils/liveQuizSync';
 import { sanitizeAvatarUrl, sanitizeDisplayName } from '../utils/progressSync';
 import {
   EVENT_SUMMARY_MAX_LENGTH,
@@ -35,7 +36,7 @@ import {
 import type { IrodoriProgressMap } from './useCloudProgressSync';
 
 const DEBOUNCE_NAV_MS = 500;
-const DEBOUNCE_LIVE_MS = 150;
+const DEBOUNCE_LIVE_MS = 40;
 const HEARTBEAT_INTERVAL_MS = 60_000;
 
 interface UseLiveActivityReporterOptions {
@@ -163,6 +164,17 @@ export function useLiveActivityReporter({
     const quizInProgress = Boolean(
       activeTab === 'quiz' && quizLiveState?.inProgress && quizLiveState.stage === 'run'
     );
+    const keepLiveQuizLog = Boolean(
+      activeTab === 'quiz' &&
+        (quizInProgress || quizLiveState?.stage === 'result')
+    );
+
+    const quizCurrentToken = quizInProgress
+      ? encodeLiveQuizToken(quizLiveState?.currentQuestionSnapshot, currentDatasetId)
+      : '';
+    const quizLiveLog = keepLiveQuizLog
+      ? encodeLiveQuizLog(quizLiveState?.answeredLog, currentDatasetId)
+      : '';
 
     return {
       activityType,
@@ -184,6 +196,8 @@ export function useLiveActivityReporter({
         ? clampInt(quizLiveState?.correctCount ?? 0, 0, 500)
         : 0,
       quizMode: (quizInProgress ? quizLiveState?.mode ?? '' : '') as QuizTypeChoice | '',
+      quizCurrentToken,
+      quizLiveLog,
     };
   }, [activeTab, userRole, datasetMode, irodoriBookId, currentDatasetId, activeScopeLabel, quizLiveState]);
 
@@ -210,6 +224,8 @@ export function useLiveActivityReporter({
       quizTotalQuestions: activityMeta.quizTotalQuestions,
       quizCorrectCount: activityMeta.quizCorrectCount,
       quizMode: activityMeta.quizMode,
+      quizCurrentToken: activityMeta.quizCurrentToken,
+      quizLiveLog: activityMeta.quizLiveLog,
       totalMastered: clampInt(statsSummary.totalMastered, 0, 5000),
       totalHard: clampInt(statsSummary.totalHard, 0, 5000),
       n4Mastered: clampInt(statsSummary.n4Mastered, 0, 500),

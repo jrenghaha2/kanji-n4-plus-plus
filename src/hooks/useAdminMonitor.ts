@@ -211,6 +211,9 @@ export function useAdminMonitor({
             quizCorrectCount:
               typeof d.quizCorrectCount === 'number' ? d.quizCorrectCount : 0,
             quizMode: (typeof d.quizMode === 'string' ? d.quizMode : '') as LiveActivityData['quizMode'],
+            quizCurrentToken:
+              typeof d.quizCurrentToken === 'string' ? d.quizCurrentToken : '',
+            quizLiveLog: typeof d.quizLiveLog === 'string' ? d.quizLiveLog : '',
             totalMastered: typeof d.totalMastered === 'number' ? d.totalMastered : 0,
             totalHard: typeof d.totalHard === 'number' ? d.totalHard : 0,
             n4Mastered: typeof d.n4Mastered === 'number' ? d.n4Mastered : 0,

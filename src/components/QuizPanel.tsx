@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { IRODORI_BOOKS } from '../data/irodoriBooks';
 import { IRODORI_CHAPTER_NUMBERS } from '../data/irodoriShared';
 import { KANJI, LEVELS } from '../data/kanjiData';
-import type { QuizLiveState } from '../types/admin';
+import type { LiveQuizQuestionSnapshot, QuizLiveState } from '../types/admin';
 import type {
   AppDatasetMode,
   IrodoriBookConfig,
@@ -152,6 +152,7 @@ export function QuizPanel({
   const [locked, setLocked] = useState(false);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [wrongFeedback, setWrongFeedback] = useState<QuizRecord | null>(null);
+  const [liveAnsweredLog, setLiveAnsweredLog] = useState<LiveQuizQuestionSnapshot[]>([]);
   const [showFurigana, setShowFurigana] = useState<boolean>(() => loadFuriganaPreference());
 
   const [localQuizHistory, setLocalQuizHistory] = useState<QuizSessionHistoryEntry[]>(
@@ -202,6 +203,7 @@ export function QuizPanel({
     setLocked(false);
     setSelectedIdx(null);
     setWrongFeedback(null);
+    setLiveAnsweredLog([]);
     setSelectedChapters(
       chapterFilter === 'all' ? [...IRODORI_CHAPTER_NUMBERS] : [chapterFilter]
     );
@@ -214,6 +216,7 @@ export function QuizPanel({
     setLocked(false);
     setSelectedIdx(null);
     setWrongFeedback(null);
+    setLiveAnsweredLog([]);
   }, [irodoriKanjiScope]);
 
   const toggleFurigana = useCallback(() => {
@@ -258,9 +261,20 @@ export function QuizPanel({
     }
   }, [stage, rightList, wrongList, onRecordQuizSession]);
 
-  // Report live quiz progress to real-time activity monitor
+  // Report live quiz progress (including current question, choices A-D, chosen answer, and answered log)
   useEffect(() => {
     if (!onQuizLiveStateChange) return;
+    const currentQ = stage === 'run' ? questions[pos] : undefined;
+    const currentQuestionSnapshot: LiveQuizQuestionSnapshot | null = currentQ
+      ? {
+          no: pos + 1,
+          type: currentQ.type,
+          itemId: currentQ.item.id,
+          optionIds: currentQ.options.map(o => o.item.id),
+          chosenIdx: selectedIdx !== null ? selectedIdx : -1,
+        }
+      : null;
+
     onQuizLiveStateChange({
       inProgress: stage === 'run',
       stage,
@@ -270,14 +284,20 @@ export function QuizPanel({
       mode: stage === 'run' ? activeSessionMetaRef.current.mode : '',
       datasetId: activeDatasetId,
       scopeLabel:
-        stage === 'run' ? activeSessionMetaRef.current.scopeLabel : activeScopeLabel,
+        stage === 'run' || stage === 'result'
+          ? activeSessionMetaRef.current.scopeLabel
+          : activeScopeLabel,
+      currentQuestionSnapshot,
+      answeredLog: stage === 'run' || stage === 'result' ? liveAnsweredLog : [],
     });
   }, [
     onQuizLiveStateChange,
     stage,
     pos,
-    questions.length,
+    questions,
+    selectedIdx,
     rightList.length,
+    liveAnsweredLog,
     activeDatasetId,
     activeScopeLabel,
   ]);
@@ -342,6 +362,7 @@ export function QuizPanel({
       setLocked(false);
       setSelectedIdx(null);
       setWrongFeedback(null);
+      setLiveAnsweredLog([]);
       setStage('run');
       onQuizStarted?.({
         datasetId: activeDatasetId,
@@ -385,6 +406,15 @@ export function QuizPanel({
 
       setLocked(true);
       setSelectedIdx(optIdx);
+
+      const liveSnap: LiveQuizQuestionSnapshot = {
+        no: pos + 1,
+        type: q.type,
+        itemId: q.item.id,
+        optionIds: q.options.map(o => o.item.id),
+        chosenIdx: optIdx,
+      };
+      setLiveAnsweredLog(prev => [...prev, liveSnap]);
 
       const isCorrect = optObj.item.id === q.item.id;
       const rec: QuizRecord = {
@@ -561,7 +591,10 @@ export function QuizPanel({
       quizTypeChoice={quizTypeChoice}
       rightList={rightList}
       wrongList={wrongList}
-      onPlayAgain={() => setStage('setup')}
+      onPlayAgain={() => {
+        setLiveAnsweredLog([]);
+        setStage('setup');
+      }}
       performancePanel={performancePanel}
     />
   );

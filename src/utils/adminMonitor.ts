@@ -10,6 +10,7 @@ import type {
   UserRole,
 } from '../types/admin';
 import type { QuizDatasetId } from '../types/kanji';
+import { decodeLiveQuizLog, decodeLiveQuizToken } from './liveQuizSync';
 import { isBootstrapSuperAdminEmail } from './rbac';
 
 export const ONLINE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
@@ -119,9 +120,20 @@ export function mergeUserMonitoringRows(
         : '';
 
     // Consider a quiz actively running only if user is online/recent AND flagged quizInProgress
-    const quizInProgress = Boolean(
-      live?.quizInProgress && (presence === 'online' || presence === 'recent')
+    const isFreshPresence = presence === 'online' || presence === 'recent';
+    const quizInProgress = Boolean(live?.quizInProgress && isFreshPresence);
+    const datasetId: QuizDatasetId = live?.datasetId ?? 'n4';
+    const liveQuizCurrent =
+      quizInProgress && live?.quizCurrentToken
+        ? decodeLiveQuizToken(live.quizCurrentToken, datasetId)
+        : null;
+    const showLiveLog = Boolean(
+      live?.quizLiveLog &&
+        (quizInProgress || (live.activityType === 'quiz_result' && isFreshPresence))
     );
+    const liveQuizLog = showLiveLog
+      ? decodeLiveQuizLog(live?.quizLiveLog, datasetId)
+      : [];
 
     return {
       uid: user.uid,
@@ -135,6 +147,7 @@ export function mergeUserMonitoringRows(
       hasLiveDoc: Boolean(live),
       hasHydratedLegacy: Boolean(hydrated),
       activityType: live?.activityType ?? null,
+      datasetId,
       moduleLabel: live?.moduleLabel || 'Belum ada aktivitas live',
       scopeLabel: live?.scopeLabel || '',
       quizInProgress,
@@ -142,6 +155,8 @@ export function mergeUserMonitoringRows(
       quizTotalQuestions: quizInProgress ? live?.quizTotalQuestions ?? 0 : 0,
       quizCorrectCount: quizInProgress ? live?.quizCorrectCount ?? 0 : 0,
       quizMode: quizInProgress ? live?.quizMode ?? '' : '',
+      liveQuizCurrent,
+      liveQuizLog,
       n4Mastered,
       n4Hard: user.n4HardCount,
       irodoriMastered,

@@ -2,6 +2,7 @@ import type {
   AppDatasetMode,
   IrodoriBookId,
   QuizDatasetId,
+  QuizModelKey,
   QuizSessionHistoryEntry,
   QuizTypeChoice,
 } from './kanji';
@@ -33,6 +34,47 @@ export type AdminSortOption =
 
 export type AdminPanelTab = 'realtime' | 'events' | 'users';
 
+export interface LiveQuizQuestionSnapshot {
+  no: number;
+  type: QuizModelKey;
+  itemId: string;
+  optionIds: string[];
+  /** -1 when unanswered, 0..3 when user selected an option */
+  chosenIdx: number;
+}
+
+export interface DecodedLiveQuizOption {
+  index: number;
+  letter: string;
+  itemId: string;
+  label: string;
+  itemK: string;
+  itemR: string;
+  itemM: string;
+  isCorrectOption: boolean;
+  isChosen: boolean;
+}
+
+export interface DecodedLiveQuizQuestion {
+  no: number;
+  type: QuizModelKey;
+  datasetId: QuizDatasetId;
+  promptTitle: string;
+  promptMain: string;
+  promptHint?: string;
+  promptSub?: string;
+  itemId: string;
+  itemK: string;
+  itemR: string;
+  itemM: string;
+  options: DecodedLiveQuizOption[];
+  chosenIdx: number;
+  answered: boolean;
+  isCorrect: boolean | null;
+  chosenOption: DecodedLiveQuizOption | null;
+  correctOption: DecodedLiveQuizOption | null;
+}
+
 export interface QuizLiveState {
   inProgress: boolean;
   stage: 'setup' | 'run' | 'result';
@@ -42,6 +84,8 @@ export interface QuizLiveState {
   mode: QuizTypeChoice | '';
   datasetId: QuizDatasetId;
   scopeLabel: string;
+  currentQuestionSnapshot?: LiveQuizQuestionSnapshot | null;
+  answeredLog?: LiveQuizQuestionSnapshot[];
 }
 
 export interface LiveActivityData {
@@ -60,6 +104,8 @@ export interface LiveActivityData {
   quizTotalQuestions: number;
   quizCorrectCount: number;
   quizMode: QuizTypeChoice | '';
+  quizCurrentToken: string;
+  quizLiveLog: string;
   totalMastered: number;
   totalHard: number;
   n4Mastered: number;
@@ -127,6 +173,7 @@ export interface MonitoredUserRow {
   hasLiveDoc: boolean;
   hasHydratedLegacy: boolean;
   activityType: LiveActivityType | null;
+  datasetId: QuizDatasetId;
   moduleLabel: string;
   scopeLabel: string;
   quizInProgress: boolean;
@@ -134,6 +181,8 @@ export interface MonitoredUserRow {
   quizTotalQuestions: number;
   quizCorrectCount: number;
   quizMode: QuizTypeChoice | '';
+  liveQuizCurrent: DecodedLiveQuizQuestion | null;
+  liveQuizLog: DecodedLiveQuizQuestion[];
   n4Mastered: number;
   n4Hard: number;
   irodoriMastered: number;

@@ -26,6 +26,12 @@ import {
   sanitizeProgressLists,
 } from './src/utils/progressSync';
 import {
+  QUIZ_CURRENT_TOKEN_MAX_LENGTH,
+  QUIZ_CURRENT_TOKEN_PATTERN,
+  QUIZ_LIVE_LOG_MAX_LENGTH,
+  QUIZ_LIVE_LOG_PATTERN,
+} from './src/utils/liveQuizSync';
+import {
   MAX_CLOUD_QUIZ_JOINED_LENGTH,
   MAX_CLOUD_QUIZ_SESSIONS,
   MAX_CLOUD_QUIZ_SESSION_TOKEN_LENGTH,
@@ -380,6 +386,10 @@ test('firestore.rules file implements all Eight Pillars gates, 3-Tier RBAC, and 
   assert.ok(Object.prototype.hasOwnProperty.call(blueprint.firestore, '/activityEvents/{eventId}'));
   assert.ok(rulesText.includes('match /liveActivity/{userId}'));
   assert.ok(rulesText.includes('isValidLiveActivity(incoming(), userId)'));
+  assert.ok(rulesText.includes('isValidQuizCurrentToken(data.quizCurrentToken)'));
+  assert.ok(rulesText.includes('isValidQuizLiveLog(data.quizLiveLog)'));
+  assert.ok(rulesText.includes(`val.size() <= ${QUIZ_CURRENT_TOKEN_MAX_LENGTH}`));
+  assert.ok(rulesText.includes(`val.size() <= ${QUIZ_LIVE_LOG_MAX_LENGTH}`));
   assert.ok(rulesText.includes('match /activityEvents/{eventId}'));
   assert.ok(rulesText.includes('isValidActivityEvent(incoming())'));
   assert.ok(rulesText.includes('allow update, delete: if false;'));
@@ -1382,4 +1392,33 @@ test('3-Tier RBAC rules enforce Bootstrap Superadmin protection, read-only Admin
     'PERMISSION_DENIED'
   );
 });
+
+test('LiveActivity quizCurrentToken and quizLiveLog regex rules reject injection and out-of-range payloads', () => {
+  // Valid current tokens (unanswered -1 and answered 0..3 across all datasets)
+  assert.equal(QUIZ_CURRENT_TOKEN_PATTERN.test(''), true);
+  assert.equal(QUIZ_CURRENT_TOKEN_PATTERN.test('1|k2m|n1|n1,n2,n3,n4|-1'), true);
+  assert.equal(QUIZ_CURRENT_TOKEN_PATTERN.test('12|ex2k|ir2_1288|ir2_1,ir2_1288,ir2_45,ir2_99|2'), true);
+  assert.equal(QUIZ_CURRENT_TOKEN_PATTERN.test('5|r2k|irp10|irp10|0'), true);
+
+  // Invalid / adversarial current tokens MUST reject
+  assert.equal(QUIZ_CURRENT_TOKEN_PATTERN.test('<script>alert(1)</script>'), false);
+  assert.equal(QUIZ_CURRENT_TOKEN_PATTERN.test('0|k2m|n1|n1,n2,n3,n4|0'), false);
+  assert.equal(QUIZ_CURRENT_TOKEN_PATTERN.test('1|k2m|n1|n1,n2,n3,n4|4'), false);
+  assert.equal(QUIZ_CURRENT_TOKEN_PATTERN.test('1|k2m|n1|n1,n2,n3,n4,n5|0'), false);
+  assert.equal(QUIZ_CURRENT_TOKEN_PATTERN.test('1|bad|n1|n1,n2|0'), false);
+
+  // Valid live answered logs
+  assert.equal(QUIZ_LIVE_LOG_PATTERN.test(''), true);
+  assert.equal(QUIZ_LIVE_LOG_PATTERN.test('1|k2r|n1|n1,n2,n3,n4|0'), true);
+  assert.equal(
+    QUIZ_LIVE_LOG_PATTERN.test('1|k2r|n1|n1,n2,n3,n4|0;2|m2k|ir5|ir6,ir5,ir7,ir8|1'),
+    true
+  );
+
+  // Invalid / adversarial live logs (unanswered -1, XSS, trailing delimiter) MUST reject
+  assert.equal(QUIZ_LIVE_LOG_PATTERN.test('1|k2r|n1|n1,n2,n3,n4|-1'), false);
+  assert.equal(QUIZ_LIVE_LOG_PATTERN.test('1|k2r|n1|n1,n2,n3,n4|0;'), false);
+  assert.equal(QUIZ_LIVE_LOG_PATTERN.test('1|k2r|n1|n1,n2,n3,n4|0;<img src=x>'), false);
+});
+
 

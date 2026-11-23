@@ -1175,7 +1175,7 @@ export function pickDistractors(
   return out;
 }
 
-function resolvePromptHint(
+export function resolvePromptHint(
   item: KanjiEntry,
   typeKey: QuizModelKey,
   dataset: readonly KanjiEntry[]

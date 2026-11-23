@@ -25,6 +25,7 @@ import {
 } from '../../utils/adminMonitor';
 import { getRoleDisplayBadgeLabel } from '../../utils/rbac';
 import { getQuizModelLabel } from '../quiz/quizHelpers';
+import { LiveQuizMonitorCard } from './LiveQuizMonitorCard';
 
 interface UserDetailModalProps {
   row: MonitoredUserRow | null;
@@ -476,6 +477,11 @@ export function UserDetailModal({
               </div>
             ) : detail ? (
               <>
+                {/* Live Quiz Real-Time Inspector (shown whenever user is actively taking or just finished a quiz) */}
+                {row.liveQuizCurrent || row.liveQuizLog.length > 0 ? (
+                  <LiveQuizMonitorCard row={row} />
+                ) : null}
+
                 {/* Top KPI summary cards (matching clean dark/light dashboard aesthetic) */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 p-3.5">

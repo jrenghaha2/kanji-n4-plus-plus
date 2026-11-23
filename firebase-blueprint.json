@@ -213,6 +213,20 @@
           "enum": ["", "random", "random5", "k2r", "k2m", "m2k", "r2k", "ex2k"],
           "description": "Model soal kuis yang sedang berjalan."
         },
+        "quizCurrentToken": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 120,
+          "pattern": "^(|[1-9][0-9]{0,2}\\|(k2r|k2m|m2k|r2k|ex2k)\\|(n|irp|ir|ir2_)[1-9][0-9]{0,3}\\|(n|irp|ir|ir2_)[1-9][0-9]{0,3}(,(n|irp|ir|ir2_)[1-9][0-9]{0,3}){0,3}\\|(-1|[0-3]))$",
+          "description": "Token ringkas berbasis ID untuk soal kuis yang sedang tampil saat ini (nomor, model, ID target, urutan opsi A-D, dan indeks pilihan pengguna -1..3)."
+        },
+        "quizLiveLog": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 15000,
+          "pattern": "^(|[1-9][0-9]{0,2}\\|(k2r|k2m|m2k|r2k|ex2k)\\|(n|irp|ir|ir2_)[1-9][0-9]{0,3}\\|(n|irp|ir|ir2_)[1-9][0-9]{0,3}(,(n|irp|ir|ir2_)[1-9][0-9]{0,3}){0,3}\\|[0-3](;[1-9][0-9]{0,2}\\|(k2r|k2m|m2k|r2k|ex2k)\\|(n|irp|ir|ir2_)[1-9][0-9]{0,3}\\|(n|irp|ir|ir2_)[1-9][0-9]{0,3}(,(n|irp|ir|ir2_)[1-9][0-9]{0,3}){0,3}\\|[0-3])*)$",
+          "description": "Log ringkas berbasis ID dari soal-soal yang sudah dijawab dalam sesi kuis berjalan (dipisahkan ';', maksimal 15000 karakter)."
+        },
         "totalMastered": {
           "type": "integer",
           "description": "Total kosakata/kanji hafal (N4 + semua buku Irodori)."
