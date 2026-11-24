@@ -66,7 +66,7 @@ test(
 
       const validCreatePayload = () => ({
         uid: 'userA_123',
-        mastered: ['n1', 'n2', 'n500'],
+        mastered: ['n1', 'n2', 'n650'],
         hard: ['n3', 'n4'],
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -106,7 +106,7 @@ test(
       await assertFails(
         setDoc(doc(userADb, 'users', 'userA_123'), {
           ...validCreatePayload(),
-          mastered: ['n1', 'n501'], // out-of-range ID
+          mastered: ['n1', 'n651'], // out-of-range ID (> 650)
         })
       );
       await assertFails(
