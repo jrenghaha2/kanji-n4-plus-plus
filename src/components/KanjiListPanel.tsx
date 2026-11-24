@@ -1,10 +1,21 @@
-import { useMemo, useState } from 'react';
-import { ChevronDown, Search, Volume2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  AlertTriangle,
+  BookOpen,
+  CheckCircle2,
+  ChevronDown,
+  Layers,
+  RotateCcw,
+  Search,
+  Shuffle,
+  Volume2,
+} from 'lucide-react';
 import { IRODORI_BOOKS } from '../data/irodoriBooks';
 import { IRODORI_CHAPTER_NUMBERS } from '../data/irodoriShared';
 import { KANJI, LEVELS } from '../data/kanjiData';
 import type {
   AppDatasetMode,
+  CardStatusFilter,
   IrodoriBookConfig,
   IrodoriChapterFilter,
   IrodoriChapterNumber,
@@ -12,6 +23,12 @@ import type {
   KanjiEntry,
   LevelFilter,
 } from '../types/kanji';
+import {
+  countItemStatuses,
+  filterCardItems,
+  reshuffleDifferent,
+  shuffleItems,
+} from '../utils/cardFilter';
 import {
   getOutsideWhitelistKanji,
   matchesIrodoriKanjiScope,
@@ -38,9 +55,12 @@ export function KanjiListPanel({
   hardSet,
 }: KanjiListPanelProps) {
   const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<CardStatusFilter>('all');
+  const [shuffleOn, setShuffleOn] = useState(false);
+  const [shuffledIdOrder, setShuffledIdOrder] = useState<string[]>([]);
   const [openIds, setOpenIds] = useState<Set<string>>(() => new Set());
 
-  const filteredItems = useMemo(() => {
+  const baseFilteredItems = useMemo(() => {
     const q = query.trim().toLowerCase();
     const source = datasetMode === 'irodori' ? irodoriBook.data : KANJI;
 
@@ -66,10 +86,64 @@ export function KanjiListPanel({
     });
   }, [datasetMode, irodoriBook.data, levelFilter, chapterFilter, irodoriKanjiScope, query]);
 
+  const statusCounts = useMemo(
+    () => countItemStatuses(baseFilteredItems, mastered, hardSet),
+    [baseFilteredItems, mastered, hardSet]
+  );
+
+  const statusFilteredItems = useMemo(
+    () => filterCardItems(baseFilteredItems, statusFilter, mastered, hardSet),
+    [baseFilteredItems, statusFilter, mastered, hardSet]
+  );
+
+  useEffect(() => {
+    if (!shuffleOn) return;
+    setShuffledIdOrder(prev => {
+      const prevSet = new Set(prev);
+      const hasAllCurrent = statusFilteredItems.every(it => prevSet.has(it.id));
+      if (hasAllCurrent && prev.length > 0) return prev;
+      return shuffleItems(statusFilteredItems).map(it => it.id);
+    });
+  }, [shuffleOn, statusFilteredItems]);
+
+  const displayedItems = useMemo(() => {
+    if (!shuffleOn) return statusFilteredItems;
+    const rank = new Map<string, number>();
+    shuffledIdOrder.forEach((id, idx) => rank.set(id, idx));
+    return statusFilteredItems
+      .slice()
+      .sort((a, b) => (rank.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.id) ?? Number.MAX_SAFE_INTEGER));
+  }, [shuffleOn, statusFilteredItems, shuffledIdOrder]);
+
+  const handleSelectStatusFilter = (nextStatus: CardStatusFilter) => {
+    if (nextStatus === statusFilter) return;
+    setStatusFilter(nextStatus);
+    if (shuffleOn) {
+      const nextItems = filterCardItems(baseFilteredItems, nextStatus, mastered, hardSet);
+      setShuffledIdOrder(shuffleItems(nextItems).map(it => it.id));
+    }
+  };
+
+  const handleToggleShuffle = () => {
+    const nextShuffle = !shuffleOn;
+    setShuffleOn(nextShuffle);
+    if (nextShuffle) {
+      setShuffledIdOrder(
+        reshuffleDifferent(statusFilteredItems, statusFilteredItems, it => it.id).map(it => it.id)
+      );
+    }
+  };
+
+  const handleReshuffle = () => {
+    setShuffledIdOrder(
+      reshuffleDifferent(displayedItems, displayedItems, it => it.id).map(it => it.id)
+    );
+  };
+
   const groupedByChapter = useMemo(() => {
-    if (datasetMode !== 'irodori') return [];
+    if (datasetMode !== 'irodori' || shuffleOn) return [];
     const map = new Map<IrodoriChapterNumber, KanjiEntry[]>();
-    for (const item of filteredItems) {
+    for (const item of displayedItems) {
       if (!item.chapter) continue;
       const arr = map.get(item.chapter);
       if (arr) arr.push(item);
@@ -80,7 +154,7 @@ export function KanjiListPanel({
       meta: irodoriBook.chapters[ch],
       items: map.get(ch) ?? [],
     })).filter(g => g.items.length > 0);
-  }, [datasetMode, irodoriBook.chapters, filteredItems]);
+  }, [datasetMode, shuffleOn, irodoriBook.chapters, displayedItems]);
 
   const toggleOpen = (id: string) => {
     setOpenIds(prev => {
@@ -216,6 +290,54 @@ export function KanjiListPanel({
     );
   };
 
+  const listStatusOptions: {
+    key: CardStatusFilter;
+    id: string;
+    label: string;
+    count: number;
+    activeClass: string;
+    icon: typeof Layers;
+  }[] = [
+    {
+      key: 'all',
+      id: 'btnListFilterAll',
+      label: 'Semua',
+      count: statusCounts.all,
+      activeClass:
+        'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-300 dark:border-indigo-700 text-indigo-800 dark:text-indigo-200',
+      icon: Layers,
+    },
+    {
+      key: 'unmastered',
+      id: 'btnListFilterUnmastered',
+      label: 'Belum hafal',
+      count: statusCounts.unmastered,
+      activeClass:
+        'bg-sky-50 dark:bg-sky-950/60 border-sky-300 dark:border-sky-700 text-sky-800 dark:text-sky-200',
+      icon: BookOpen,
+    },
+    {
+      key: 'mastered',
+      id: 'btnListFilterMastered',
+      label: 'Sudah hafal',
+      count: statusCounts.mastered,
+      activeClass:
+        'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200',
+      icon: CheckCircle2,
+    },
+    {
+      key: 'hard',
+      id: 'btnListFilterHard',
+      label: 'Sulit',
+      count: statusCounts.hard,
+      activeClass:
+        'bg-amber-50 dark:bg-amber-950/60 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200',
+      icon: AlertTriangle,
+    },
+  ];
+
+  const nounLabel = datasetMode === 'irodori' ? 'kosakata' : 'kanji';
+
   return (
     <section
       aria-label={
@@ -228,39 +350,117 @@ export function KanjiListPanel({
           Ketuk baris untuk melihat contoh kalimat. Progres tersimpan di perangkat ini.
         </p>
         <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 font-mono-num whitespace-nowrap">
-          {filteredItems.length} kosakata
+          {displayedItems.length} kosakata
         </span>
       </div>
 
-      <div className="relative max-w-xl">
-        <Search
-          className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none"
-          aria-hidden="true"
-        />
-        <input
-          type="search"
-          id="kanjiSearch"
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          placeholder={
-            datasetMode === 'irodori'
-              ? 'Cari kotoba, kanji, hiragana, atau arti…'
-              : 'Cari kanji, hiragana, atau arti…'
-          }
-          aria-label="Cari kosakata"
-          className="w-full min-h-[46px] pl-11 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm sm:text-base font-medium text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-        />
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div className="relative flex-1 max-w-xl">
+          <Search
+            className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none"
+            aria-hidden="true"
+          />
+          <input
+            type="search"
+            id="kanjiSearch"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder={
+              datasetMode === 'irodori'
+                ? 'Cari kotoba, kanji, hiragana, atau arti…'
+                : 'Cari kanji, hiragana, atau arti…'
+            }
+            aria-label="Cari kosakata"
+            className="w-full min-h-[44px] pl-11 pr-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm sm:text-base font-medium text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            id="btnListShuffle"
+            aria-pressed={shuffleOn}
+            onClick={handleToggleShuffle}
+            className={`min-h-[38px] px-3 py-1.5 rounded-xl border text-xs sm:text-sm font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-500 ${
+              shuffleOn
+                ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-200'
+                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Shuffle className="w-4 h-4 shrink-0" aria-hidden="true" />
+            <span>Acak: {shuffleOn ? 'nyala' : 'mati'}</span>
+          </button>
+
+          {shuffleOn && displayedItems.length > 1 ? (
+            <button
+              type="button"
+              id="btnListReshuffle"
+              onClick={handleReshuffle}
+              className="min-h-[38px] px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs sm:text-sm font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-500"
+            >
+              <RotateCcw className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+              <span>Acak ulang</span>
+            </button>
+          ) : null}
+        </div>
       </div>
 
-      {filteredItems.length === 0 ? (
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-10 text-center text-sm font-medium text-slate-500 dark:text-slate-400">
-          {query.trim()
-            ? `Tidak ada hasil untuk “${query.trim()}”.`
-            : irodoriKanjiScope !== 'all'
-              ? 'Tidak ada kosakata yang cocok untuk filter Kanji dan bab yang dipilih.'
-              : 'Belum ada data kosakata pada bab ini.'}
+      <div
+        role="group"
+        aria-label="Filter status hafalan daftar"
+        className="flex flex-wrap items-center gap-2"
+      >
+        {listStatusOptions.map(opt => {
+          const Icon = opt.icon;
+          const active = statusFilter === opt.key;
+          return (
+            <button
+              key={opt.key}
+              type="button"
+              id={opt.id}
+              aria-pressed={active}
+              onClick={() => handleSelectStatusFilter(opt.key)}
+              className={`min-h-[38px] px-3 py-1.5 rounded-xl border text-xs sm:text-sm font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-500 ${
+                active
+                  ? opt.activeClass
+                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+              <span>{opt.label}</span>
+              <span className="font-mono-num text-[11px] opacity-80">({opt.count})</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {displayedItems.length === 0 ? (
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-10 text-center space-y-4">
+          <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+            {query.trim()
+              ? `Tidak ada hasil untuk “${query.trim()}” pada filter ini.`
+              : statusFilter === 'hard'
+                ? `Belum ada ${nounLabel} sulit yang ditandai.`
+                : statusFilter === 'mastered'
+                  ? `Belum ada ${nounLabel} yang ditandai hafal.`
+                  : statusFilter === 'unmastered'
+                    ? `Semua ${nounLabel} pada pilihan ini sudah hafal!`
+                    : irodoriKanjiScope !== 'all'
+                      ? 'Tidak ada kosakata yang cocok untuk filter Kanji dan bab yang dipilih.'
+                      : 'Belum ada data kosakata pada bab ini.'}
+          </p>
+          {statusFilter !== 'all' ? (
+            <button
+              type="button"
+              id="btnListShowAll"
+              onClick={() => handleSelectStatusFilter('all')}
+              className="min-h-[40px] px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-bold transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-500"
+            >
+              Tampilkan semua
+            </button>
+          ) : null}
         </div>
-      ) : datasetMode === 'irodori' ? (
+      ) : datasetMode === 'irodori' && !shuffleOn ? (
         <div className="space-y-6" id="kanjiList">
           {groupedByChapter.map(group => (
             <section
@@ -301,7 +501,7 @@ export function KanjiListPanel({
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3" id="kanjiList">
-          {filteredItems.map(renderCard)}
+          {displayedItems.map(renderCard)}
         </div>
       )}
     </section>

@@ -3,8 +3,10 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  BookOpen,
   Check,
-  EyeOff,
+  CheckCircle2,
+  Layers,
   RotateCcw,
   Shuffle,
   Trash2,
@@ -12,7 +14,8 @@ import {
   X,
 } from 'lucide-react';
 import { KANJI, LEVELS } from '../data/kanjiData';
-import type { AppDatasetMode, KanjiEntry, LevelFilter } from '../types/kanji';
+import type { AppDatasetMode, CardStatusFilter, KanjiEntry, LevelFilter } from '../types/kanji';
+import type { CardStatusCounts } from '../utils/cardFilter';
 import { getOutsideWhitelistKanji } from '../utils/irodoriKanjiFilter';
 import { speakJP } from '../utils/tts';
 
@@ -24,9 +27,9 @@ interface FlashcardPanelProps {
   order: number[];
   pos: number;
   flipped: boolean;
-  hideMastered: boolean;
+  statusFilter: CardStatusFilter;
+  statusCounts: CardStatusCounts;
   shuffleOn: boolean;
-  hardMode: boolean;
   mastered: Set<string>;
   hardSet: Set<string>;
   levelHardCount: number;
@@ -42,9 +45,9 @@ interface FlashcardPanelProps {
   onResetAllLevelMastered: () => void;
   onUnhardCurrent: () => void;
   onClearLevelHard: () => void;
-  onToggleHideMastered: () => void;
+  onSelectStatusFilter: (next: CardStatusFilter) => void;
   onToggleShuffle: () => void;
-  onToggleHardMode: () => void;
+  onReshuffle: () => void;
   onRestartSession: () => void;
   onRepeatSessionHard: () => void;
 }
@@ -57,9 +60,9 @@ export function FlashcardPanel({
   order,
   pos,
   flipped,
-  hideMastered,
+  statusFilter,
+  statusCounts,
   shuffleOn,
-  hardMode,
   mastered,
   hardSet,
   levelHardCount,
@@ -75,9 +78,9 @@ export function FlashcardPanel({
   onResetAllLevelMastered,
   onUnhardCurrent,
   onClearLevelHard,
-  onToggleHideMastered,
+  onSelectStatusFilter,
   onToggleShuffle,
-  onToggleHardMode,
+  onReshuffle,
   onRestartSession,
   onRepeatSessionHard,
 }: FlashcardPanelProps) {
@@ -138,40 +141,143 @@ export function FlashcardPanel({
         ? 'Yakin? Ketuk lagi'
         : `Yakin? (level ${levelLabel}) ketuk lagi`;
 
+  const statusFilterOptions: {
+    key: CardStatusFilter;
+    id: string;
+    label: string;
+    count: number;
+    activeClass: string;
+    icon: typeof Layers;
+  }[] = [
+    {
+      key: 'all',
+      id: 'btnFilterAll',
+      label: 'Semua',
+      count: statusCounts.all,
+      activeClass:
+        'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-300 dark:border-indigo-700 text-indigo-800 dark:text-indigo-200',
+      icon: Layers,
+    },
+    {
+      key: 'unmastered',
+      id: 'btnFilterUnmastered',
+      label: 'Belum hafal',
+      count: statusCounts.unmastered,
+      activeClass:
+        'bg-sky-50 dark:bg-sky-950/60 border-sky-300 dark:border-sky-700 text-sky-800 dark:text-sky-200',
+      icon: BookOpen,
+    },
+    {
+      key: 'mastered',
+      id: 'btnFilterMastered',
+      label: 'Sudah hafal',
+      count: statusCounts.mastered,
+      activeClass:
+        'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200',
+      icon: CheckCircle2,
+    },
+    {
+      key: 'hard',
+      id: 'btnFilterHard',
+      label: 'Sulit',
+      count: statusCounts.hard,
+      activeClass:
+        'bg-amber-50 dark:bg-amber-950/60 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200',
+      icon: AlertTriangle,
+    },
+  ];
+
+  const nounLabel = datasetMode === 'irodori' ? 'kosakata' : 'kanji';
+  const scopeNoun = datasetMode === 'irodori' ? 'pilihan ini' : 'level ini';
+
+  const emptyMessage =
+    statusFilter === 'hard'
+      ? `Belum ada ${nounLabel} sulit di ${scopeNoun}.`
+      : statusFilter === 'mastered'
+        ? `Belum ada ${nounLabel} yang ditandai hafal di ${scopeNoun}.`
+        : statusFilter === 'unmastered'
+          ? `Semua ${nounLabel} di ${scopeNoun} sudah hafal!`
+          : 'Tidak ada kosakata yang cocok pada pilihan bab dan filter Kanji ini.';
+
+  const emptyTitle =
+    statusFilter === 'unmastered'
+      ? 'Semua sudah hafal!'
+      : statusFilter === 'all'
+        ? 'Belum ada data'
+        : 'Belum ada kartu di filter ini';
+
   return (
     <section aria-label="Mode Kartu Flashcard" className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <span className="text-sm font-semibold text-slate-600 dark:text-slate-300 font-mono-num" id="cardCounter">
-          {isDone ? `Selesai · ${total} kartu` : `Kartu ${pos + 1} dari ${total}`}
-        </span>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            id="btnHideMastered"
-            onClick={onToggleHideMastered}
-            className={`min-h-[40px] px-3 py-2 rounded-xl border text-xs sm:text-sm font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-500 ${
-              hideMastered
-                ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-200'
-                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
-            }`}
+      <div className="space-y-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <span
+            className="text-sm font-semibold text-slate-600 dark:text-slate-300 font-mono-num"
+            id="cardCounter"
           >
-            <EyeOff className="w-4 h-4 shrink-0" aria-hidden="true" />
-            <span>Sembunyikan hafal: {hideMastered ? 'nyala' : 'mati'}</span>
-          </button>
+            {total === 0
+              ? '0 kartu ditampilkan'
+              : isDone
+                ? `Selesai · ${total} kartu`
+                : `Kartu ${pos + 1} dari ${total}`}
+          </span>
 
-          <button
-            type="button"
-            id="btnShuffle"
-            onClick={onToggleShuffle}
-            className={`min-h-[40px] px-3 py-2 rounded-xl border text-xs sm:text-sm font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-500 ${
-              shuffleOn
-                ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-200'
-                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
-            }`}
-          >
-            <Shuffle className="w-4 h-4 shrink-0" aria-hidden="true" />
-            <span>Acak: {shuffleOn ? 'nyala' : 'mati'}</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              id="btnShuffle"
+              aria-pressed={shuffleOn}
+              onClick={onToggleShuffle}
+              className={`min-h-[38px] px-3 py-1.5 rounded-xl border text-xs sm:text-sm font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-500 ${
+                shuffleOn
+                  ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-200'
+                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+              }`}
+            >
+              <Shuffle className="w-4 h-4 shrink-0" aria-hidden="true" />
+              <span>Acak: {shuffleOn ? 'nyala' : 'mati'}</span>
+            </button>
+
+            {shuffleOn && total > 1 ? (
+              <button
+                type="button"
+                id="btnReshuffle"
+                onClick={onReshuffle}
+                className="min-h-[38px] px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs sm:text-sm font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-500"
+              >
+                <RotateCcw className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                <span>Acak ulang</span>
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        <div
+          role="group"
+          aria-label="Filter status hafalan kartu"
+          className="flex flex-wrap items-center gap-2"
+        >
+          {statusFilterOptions.map(opt => {
+            const Icon = opt.icon;
+            const active = statusFilter === opt.key;
+            return (
+              <button
+                key={opt.key}
+                type="button"
+                id={opt.id}
+                aria-pressed={active}
+                onClick={() => onSelectStatusFilter(opt.key)}
+                className={`min-h-[38px] px-3 py-1.5 rounded-xl border text-xs sm:text-sm font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-500 ${
+                  active
+                    ? opt.activeClass
+                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                <span>{opt.label}</span>
+                <span className="font-mono-num text-[11px] opacity-80">({opt.count})</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -185,43 +291,48 @@ export function FlashcardPanel({
       {isDone ? (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-8 text-center shadow-xs">
           <div className="text-4xl" aria-hidden="true">
-            {total === 0 && !hardMode && !hideMastered ? '📚' : '🎉'}
+            {total === 0 && statusFilter !== 'unmastered' ? '📚' : '🎉'}
           </div>
           <h2 className="mt-3 text-xl font-bold text-slate-900 dark:text-slate-50">
-            {total === 0 && !hardMode && !hideMastered ? 'Belum ada data' : 'Sesi selesai!'}
+            {total === 0 ? emptyTitle : 'Sesi selesai!'}
           </h2>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-300 font-medium">
             {total === 0
-              ? hardMode
-                ? datasetMode === 'irodori'
-                  ? 'Belum ada kosakata sulit di pilihan ini.'
-                  : 'Belum ada kanji sulit di level ini.'
-                : hideMastered
-                  ? datasetMode === 'irodori'
-                    ? 'Semua kosakata di pilihan ini sudah hafal.'
-                    : 'Semua kanji di level ini sudah hafal.'
-                  : 'Tidak ada kosakata yang cocok pada pilihan bab dan filter Kanji ini.'
+              ? emptyMessage
               : `${total} kartu diulas · ${sessionNewMaster} hafal baru · ${sessionHardCount} ditandai sulit`}
           </p>
 
           <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
-            {sessionHardCount > 0 ? (
+            {total === 0 && statusFilter !== 'all' ? (
               <button
                 type="button"
-                onClick={onRepeatSessionHard}
-                className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-500"
+                id="btnShowAllCards"
+                onClick={() => onSelectStatusFilter('all')}
+                className="w-full sm:w-auto min-h-[44px] px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-500"
               >
-                <RotateCcw className="w-4 h-4" aria-hidden="true" />
-                <span>Ulangi kartu sulit ({sessionHardCount})</span>
+                Tampilkan semua kartu
               </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={onRestartSession}
-              className="w-full sm:w-auto min-h-[44px] px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-500"
-            >
-              Mulai sesi baru
-            </button>
+            ) : (
+              <>
+                {sessionHardCount > 0 ? (
+                  <button
+                    type="button"
+                    onClick={onRepeatSessionHard}
+                    className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-500"
+                  >
+                    <RotateCcw className="w-4 h-4" aria-hidden="true" />
+                    <span>Ulangi kartu sulit ({sessionHardCount})</span>
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={onRestartSession}
+                  className="w-full sm:w-auto min-h-[44px] px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-500"
+                >
+                  Mulai sesi baru
+                </button>
+              </>
+            )}
           </div>
         </div>
       ) : (
@@ -384,23 +495,6 @@ export function FlashcardPanel({
 
           {/* Action Deck */}
           <div className="space-y-3">
-            <button
-              type="button"
-              id="btnHardMode"
-              onClick={onToggleHardMode}
-              disabled={!hardMode && levelHardCount === 0}
-              className={`w-full min-h-[44px] px-4 py-2.5 rounded-xl border text-sm font-semibold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-indigo-500 ${
-                hardMode
-                  ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200'
-                  : 'bg-white dark:bg-slate-900 border-dashed border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
-              }`}
-            >
-              <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
-              <span>
-                Kartu sulit ({levelHardCount}){hardMode ? ': nyala' : ''}
-              </span>
-            </button>
-
             <div className="grid grid-cols-2 gap-2.5">
               <button
                 type="button"
