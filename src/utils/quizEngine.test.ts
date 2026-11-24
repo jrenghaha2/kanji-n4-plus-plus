@@ -21,10 +21,10 @@ function createDeterministicRng(seed = 42): () => number {
   };
 }
 
-test('all 2,500 quiz questions (500 kanji x 5 models) generate 4 unique valid options with exact answer included', () => {
+test('all quiz questions (KANJI.length x 5 models) generate 4 unique valid options with exact answer included', () => {
   const rng = createDeterministicRng(1234);
   const bank = buildQuizBank('all', 'random5', KANJI);
-  assert.equal(bank.length, 2500);
+  assert.equal(bank.length, KANJI.length * 5);
 
   for (const entry of bank) {
     const item = KANJI[entry.kanjiIdx];
@@ -46,7 +46,7 @@ test('all 2,500 quiz questions (500 kanji x 5 models) generate 4 unique valid op
   }
 });
 
-test('ex2k sentence questions enforce POS/grammatical compatibility across all 500 items', () => {
+test('ex2k sentence questions enforce POS/grammatical compatibility across all items', () => {
   const rng = createDeterministicRng(777);
   const posMismatches: string[] = [];
 
@@ -86,9 +86,7 @@ test('level isolation keeps distractors strictly within the active difficulty le
     for (const q of session) {
       assert.equal(q.item.dif, lv);
       for (const opt of q.options) {
-        // Hard has only 2 na-adjectives (丁寧, 複雑), so naadj_modifier in Hard must borrow 2 na-adj distractors for grammatical validity
-        const isHardNaAdjException = lv === 'hard' && q.type === 'ex2k' && q.exMeta?.blankContext === 'naadj_modifier';
-        if (opt.item.dif !== lv && !isHardNaAdjException) {
+        if (opt.item.dif !== lv) {
           crossLevelLeaks.push(`[${lv}] ${q.item.id} (${q.type}) leaked ${opt.item.id} (${opt.item.dif})`);
         }
       }

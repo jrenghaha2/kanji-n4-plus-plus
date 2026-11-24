@@ -6,8 +6,8 @@ import type { IrodoriBookId } from '../types/kanji';
 export const UID_MIN_LENGTH = 1;
 export const UID_MAX_LENGTH = 128;
 export const UID_PATTERN = /^[a-zA-Z0-9_-]+$/;
-export const KANJI_ID_PATTERN = /^n([1-9]|[1-9][0-9]|[1-4][0-9]{2}|500)$/;
-export const MAX_KANJI_LIST_SIZE = 500;
+export const KANJI_ID_PATTERN = /^n([1-9]|[1-9][0-9]|[1-5][0-9]{2}|6[0-4][0-9]|650)$/;
+export const MAX_KANJI_LIST_SIZE = 650;
 export const DISPLAY_NAME_MAX_LENGTH = 60;
 export const EMAIL_MAX_LENGTH = 160;
 export const AVATAR_URL_MAX_LENGTH = 20000;
@@ -104,7 +104,7 @@ export function buildUserProfileWriteData(
 }
 
 /**
- * Sanitizes, deduplicates, enforces Kanji ID allowlist & blueprint bounds (<= 500),
+ * Sanitizes, deduplicates, enforces Kanji ID allowlist & blueprint bounds (<= 650),
  * and ensures an item marked mastered is never duplicated inside hard.
  */
 export function sanitizeProgressLists(

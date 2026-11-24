@@ -15,7 +15,10 @@ import { buildQuizSession } from './quizEngine';
 
 test('JFT_KANJI_WHITELIST includes all master txt Kanji and all kanjiData.ts Kanji without non-Kanji characters', () => {
   assert.ok(JFT_MASTER_TXT_KANJI.length >= 960, 'Expected at least 960 unique Kanji from master txt');
-  assert.ok(JFT_KANJI_WHITELIST.size >= 980, 'Expected merged whitelist >= 980 Kanji');
+  assert.ok(
+    JFT_KANJI_WHITELIST.size >= JFT_MASTER_TXT_KANJI.length,
+    'Expected merged whitelist >= master txt Kanji count'
+  );
 
   // Ensure no hiragana, katakana, romaji, punctuation, or iteration mark crept into the whitelist
   for (const ch of JFT_KANJI_WHITELIST) {

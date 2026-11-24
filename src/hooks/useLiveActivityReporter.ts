@@ -123,7 +123,7 @@ export function useLiveActivityReporter({
       totalHard,
       totalQuizSessions: allSessions.length,
       lastQuizScore: latest ? clampInt(latest.entry.score, 0, 100) : -1,
-      lastQuizTotal: latest ? clampInt(latest.entry.total, 0, 500) : 0,
+      lastQuizTotal: latest ? clampInt(latest.entry.total, 0, 999) : 0,
       lastQuizDatasetId: (latest?.datasetId ?? '') as QuizDatasetId | '',
     };
   }, [mastered, hardSet, irodoriProgress, quizHistories]);
@@ -193,13 +193,13 @@ export function useLiveActivityReporter({
       ),
       quizInProgress,
       quizCurrentQuestion: quizInProgress
-        ? clampInt(quizLiveState?.currentQuestion ?? 0, 0, 500)
+        ? clampInt(quizLiveState?.currentQuestion ?? 0, 0, 999)
         : 0,
       quizTotalQuestions: quizInProgress
-        ? clampInt(quizLiveState?.totalQuestions ?? 0, 0, 500)
+        ? clampInt(quizLiveState?.totalQuestions ?? 0, 0, 999)
         : 0,
       quizCorrectCount: quizInProgress
-        ? clampInt(quizLiveState?.correctCount ?? 0, 0, 500)
+        ? clampInt(quizLiveState?.correctCount ?? 0, 0, 999)
         : 0,
       quizMode: (quizInProgress ? quizLiveState?.mode ?? '' : '') as QuizTypeChoice | '',
       quizCurrentToken,
@@ -234,11 +234,11 @@ export function useLiveActivityReporter({
       quizLiveLog: activityMeta.quizLiveLog,
       totalMastered: clampInt(statsSummary.totalMastered, 0, 5000),
       totalHard: clampInt(statsSummary.totalHard, 0, 5000),
-      n4Mastered: clampInt(statsSummary.n4Mastered, 0, 500),
+      n4Mastered: clampInt(statsSummary.n4Mastered, 0, 650),
       irodoriMastered: clampInt(statsSummary.irodoriMastered, 0, 4000),
       totalQuizSessions: clampInt(statsSummary.totalQuizSessions, 0, 5000),
       lastQuizScore: clampInt(statsSummary.lastQuizScore, -1, 100),
-      lastQuizTotal: clampInt(statsSummary.lastQuizTotal, 0, 500),
+      lastQuizTotal: clampInt(statsSummary.lastQuizTotal, 0, 999),
       lastQuizDatasetId: statsSummary.lastQuizDatasetId,
     };
   }, [
@@ -360,8 +360,8 @@ export function useLiveActivityReporter({
           scopeLabel: sanitizeBoundedText(input.scopeLabel, SCOPE_LABEL_MAX_LENGTH),
           quizMode: input.quizMode ?? '',
           score: clampInt(input.score ?? -1, -1, 100),
-          correct: clampInt(input.correct ?? 0, 0, 500),
-          total: clampInt(input.total ?? 0, 0, 500),
+          correct: clampInt(input.correct ?? 0, 0, 999),
+          total: clampInt(input.total ?? 0, 0, 999),
           totalMastered: clampInt(
             input.totalMastered ?? statsSummary.totalMastered,
             0,

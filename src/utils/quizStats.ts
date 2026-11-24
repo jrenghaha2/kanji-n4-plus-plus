@@ -16,7 +16,7 @@ export const IRODORI_QUIZ_HISTORY_KEY = 'irodori_quiz_history_v1';
 export const IRODORI_PEMULA_QUIZ_HISTORY_KEY = 'irodori_pemula_quiz_history_v1';
 export const IRODORI_DASAR2_QUIZ_HISTORY_KEY = 'irodori_dasar2_quiz_history_v1';
 export const MAX_QUIZ_HISTORY = 15;
-export const MAX_STORED_ANSWERS_PER_SESSION = 500;
+export const MAX_STORED_ANSWERS_PER_SESSION = 999;
 
 export const QUIZ_HISTORY_KEYS_BY_DATASET: Record<QuizDatasetId, string> = {
   n4: QUIZ_HISTORY_KEY,

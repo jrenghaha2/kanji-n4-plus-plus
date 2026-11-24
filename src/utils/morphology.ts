@@ -111,6 +111,10 @@ export const NOUN_EXCEPTIONS = new Set<string>([
   '～にしましょう',
   'にしましょう',
   '～はちょっと…',
+  '代わり',
+  '後ろ',
+  '同じ',
+  '曜日',
 ]);
 
 /**
@@ -172,6 +176,10 @@ export const NA_ADJECTIVES = new Set<string>([
   'コンパクト',
   'パワフル',
   'シンプル',
+  '丈夫',
+  '盛ん',
+  '適当',
+  '確か',
 ]);
 
 /**
@@ -228,6 +236,11 @@ export const SURU_NOUNS = new Set<string>([
   '引っ越し',
   '洗濯',
   '挨拶',
+  '勉強',
+  '研究',
+  '電話',
+  '入学',
+  '連絡',
 ]);
 
 /**
@@ -327,6 +340,9 @@ export const KNOWN_ICHIDAN_VERBS = new Set<string>([
   '温める',
   '閉じる',
   '煮る',
+  '食べる',
+  '見る',
+  '出る',
 ]);
 
 const I_MAP: Record<string, string> = {

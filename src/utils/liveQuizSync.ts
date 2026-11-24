@@ -36,7 +36,7 @@ export function encodeLiveQuizToken(
   datasetId: QuizDatasetId
 ): string {
   if (!snapshot) return '';
-  if (!Number.isInteger(snapshot.no) || snapshot.no < 1 || snapshot.no > 500) return '';
+  if (!Number.isInteger(snapshot.no) || snapshot.no < 1 || snapshot.no > 999) return '';
   if (!isValidQuizModelKey(snapshot.type)) return '';
   if (
     !Number.isInteger(snapshot.chosenIdx) ||
@@ -141,7 +141,7 @@ export function decodeLiveQuizToken(
   if (
     !Number.isInteger(no) ||
     no < 1 ||
-    no > 500 ||
+    no > 999 ||
     !isValidQuizModelKey(rawType) ||
     !Number.isInteger(chosenIdx) ||
     chosenIdx < -1 ||

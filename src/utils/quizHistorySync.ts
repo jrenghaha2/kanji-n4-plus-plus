@@ -214,7 +214,7 @@ function packAnswerTokens(
   const encodedRows: { no: number; correct: boolean; token: string }[] = [];
 
   for (const ans of answers) {
-    if (!Number.isInteger(ans.no) || ans.no < 1 || ans.no > 500) continue;
+    if (!Number.isInteger(ans.no) || ans.no < 1 || ans.no > 999) continue;
     if (!byId.has(ans.itemId)) continue;
     const typeIdx = MODEL_TO_INDEX[ans.type];
     if (typeIdx === undefined) continue;
@@ -282,7 +282,7 @@ export function encodeQuizSessionCompact(
   includeAnswers = true
 ): string | null {
   if (!Number.isInteger(entry.total) || entry.total <= 0) return null;
-  const total = Math.min(500, entry.total);
+  const total = Math.min(999, entry.total);
   const correct = Math.max(0, Math.min(total, Math.floor(entry.correct)));
   const score = calculateQuizScore(correct, total);
   const level: LevelFilter = VALID_LEVELS.has(entry.level) ? entry.level : 'all';
@@ -342,7 +342,7 @@ export function decodeQuizSessionCompact(
     !VALID_MODES.has(mode) ||
     !Number.isInteger(total) ||
     total <= 0 ||
-    total > 500 ||
+    total > 999 ||
     !Number.isInteger(correct) ||
     correct < 0 ||
     correct > total ||

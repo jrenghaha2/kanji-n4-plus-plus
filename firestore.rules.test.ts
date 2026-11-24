@@ -195,9 +195,9 @@ function simulateRulesDecision(
   }
 
   const commaJoinedPattern =
-    /^n([1-9]|[1-9][0-9]|[1-4][0-9]{2}|500)(,n([1-9]|[1-9][0-9]|[1-4][0-9]{2}|500))*$/;
+    /^n([1-9]|[1-9][0-9]|[1-5][0-9]{2}|6[0-4][0-9]|650)(,n([1-9]|[1-9][0-9]|[1-5][0-9]{2}|6[0-4][0-9]|650))*$/;
   const pipeJoinedPattern =
-    /^n([1-9]|[1-9][0-9]|[1-4][0-9]{2}|500)(\|n([1-9]|[1-9][0-9]|[1-4][0-9]{2}|500))*$/;
+    /^n([1-9]|[1-9][0-9]|[1-5][0-9]{2}|6[0-4][0-9]|650)(\|n([1-9]|[1-9][0-9]|[1-5][0-9]{2}|6[0-4][0-9]|650))*$/;
 
   const checkList = (arr: unknown): arr is string[] => {
     if (!Array.isArray(arr) || arr.length > MAX_KANJI_LIST_SIZE) return false;
@@ -209,7 +209,7 @@ function simulateRulesDecision(
     const commaJoined = arr.join(',');
     const pipeJoined = arr.join('|');
     return (
-      commaJoined.length <= 2500 &&
+      commaJoined.length <= 3500 &&
       commaJoinedPattern.test(commaJoined) &&
       pipeJoinedPattern.test(pipeJoined)
     );
@@ -349,7 +349,7 @@ test('firestore.rules file implements all Eight Pillars gates, 3-Tier RBAC, and 
     'superadmin',
   ]);
   assert.ok(rulesText.includes('arr.toSet().size() == arr.size()'));
-  assert.ok(rulesText.includes("arr.join(',').size() <= 2500"));
+  assert.ok(rulesText.includes("arr.join(',').size() <= 3500"));
   assert.ok(rulesText.includes("arr.join(',').matches("));
   assert.ok(rulesText.includes("arr.join('|').matches("));
   assert.ok(rulesText.includes('data.mastered.toSet().intersection(data.hard.toSet()).size() == 0'));
@@ -473,7 +473,7 @@ test('Dirty Dozen adversarial payloads and unsafe profile inputs result in PERMI
     }),
     'PERMISSION_DENIED'
   );
-  const oversized = Array.from({ length: 501 }, (_, i) => `n${i + 1}`);
+  const oversized = Array.from({ length: 651 }, (_, i) => `n${i + 1}`);
   assert.equal(
     simulateRulesDecision('create', userA, 'userA_123', { ...validExisting, mastered: oversized }),
     'PERMISSION_DENIED'
@@ -525,7 +525,7 @@ test('Dirty Dozen adversarial payloads and unsafe profile inputs result in PERMI
   assert.equal(
     simulateRulesDecision('create', userA, 'userA_123', {
       ...validExisting,
-      mastered: ['n1', 'n501'], // out-of-range kanji ID
+      mastered: ['n1', 'n651'], // out-of-range kanji ID
     }),
     'PERMISSION_DENIED'
   );

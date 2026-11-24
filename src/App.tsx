@@ -985,8 +985,8 @@ export default function App() {
                 : `${activeIrodoriBook.data.length} kosakata & kanji ${activeIrodoriBook.label} (Bab 1–18) · tersimpan lokal (masuk untuk sinkronisasi cloud)`
               : `${activeIrodoriBook.label} · belum ada data materi`
             : user
-              ? `500 kosakata kanji JLPT N4 · hingga 2.500 variasi soal kuis · akun ${effectiveDisplayName || user.email || 'terhubung'}${user.emailVerified ? ' (cloud aktif)' : ' (menunggu verifikasi email)'}`
-              : '500 kosakata kanji JLPT N4 · hingga 2.500 variasi soal kuis · tersimpan lokal (masuk untuk sinkronisasi cloud)'}
+              ? `${KANJI.length} kosakata kanji JLPT N5–N4 · hingga ${(KANJI.length * 5).toLocaleString('id-ID')} variasi soal kuis · akun ${effectiveDisplayName || user.email || 'terhubung'}${user.emailVerified ? ' (cloud aktif)' : ' (menunggu verifikasi email)'}`
+              : `${KANJI.length} kosakata kanji JLPT N5–N4 · hingga ${(KANJI.length * 5).toLocaleString('id-ID')} variasi soal kuis · tersimpan lokal (masuk untuk sinkronisasi cloud)`}
         </footer>
       </div>
 
