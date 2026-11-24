@@ -4,6 +4,8 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
+  Eye,
+  EyeOff,
   Radio,
   XCircle,
 } from 'lucide-react';
@@ -13,13 +15,17 @@ import { getQuizModelLabel } from '../quiz/quizHelpers';
 
 interface LiveQuizMonitorCardProps {
   row: MonitoredUserRow;
+  showAnswerKey?: boolean;
+  onToggleAnswerKey?: () => void;
 }
 
 function QuestionChoicesGrid({
   q,
+  showAnswerKey,
   compact = false,
 }: {
   q: DecodedLiveQuizQuestion;
+  showAnswerKey: boolean;
   compact?: boolean;
 }) {
   return (
@@ -45,7 +51,7 @@ function QuestionChoicesGrid({
             letterClass = 'bg-rose-600 text-white';
             statusTag = 'Dipilih · Salah';
             statusClass = 'text-rose-700 dark:text-rose-300';
-          } else if (opt.isCorrectOption) {
+          } else if (opt.isCorrectOption && showAnswerKey) {
             cardClass =
               'border-emerald-400/90 dark:border-emerald-600/80 bg-emerald-50/45 dark:bg-emerald-950/25 text-emerald-950 dark:text-emerald-100';
             letterClass = 'bg-emerald-600/90 text-white';
@@ -55,7 +61,7 @@ function QuestionChoicesGrid({
             cardClass =
               'border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 text-slate-500 dark:text-slate-400';
           }
-        } else if (opt.isCorrectOption) {
+        } else if (opt.isCorrectOption && showAnswerKey) {
           cardClass =
             'border-emerald-300/90 dark:border-emerald-700/70 bg-emerald-50/35 dark:bg-emerald-950/20 text-slate-900 dark:text-slate-50';
           letterClass =
@@ -110,9 +116,23 @@ function QuestionChoicesGrid({
   );
 }
 
-export function LiveQuizMonitorCard({ row }: LiveQuizMonitorCardProps) {
+export function LiveQuizMonitorCard({
+  row,
+  showAnswerKey: controlledShowAnswerKey,
+  onToggleAnswerKey,
+}: LiveQuizMonitorCardProps) {
   const [logFilter, setLogFilter] = useState<'all' | 'wrong' | 'right'>('all');
   const [showAnsweredHistory, setShowAnsweredHistory] = useState(true);
+  const [localShowAnswerKey, setLocalShowAnswerKey] = useState(false);
+
+  const showAnswerKey = controlledShowAnswerKey ?? localShowAnswerKey;
+  const handleToggleAnswerKey = () => {
+    if (onToggleAnswerKey) {
+      onToggleAnswerKey();
+    } else {
+      setLocalShowAnswerKey(prev => !prev);
+    }
+  };
 
   const currentQ = row.liveQuizCurrent;
   const datasetMode = row.datasetId === 'n4' ? 'n4' : 'irodori';
@@ -170,32 +190,72 @@ export function LiveQuizMonitorCard({ row }: LiveQuizMonitorCardProps) {
           ) : null}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 text-xs font-mono-num">
-          {row.quizInProgress && row.quizTotalQuestions > 0 ? (
-            <span className="font-semibold text-slate-700 dark:text-slate-200">
-              Soal {row.quizCurrentQuestion}/{row.quizTotalQuestions}
-            </span>
-          ) : (
-            <span className="font-semibold text-slate-700 dark:text-slate-200">
-              {totalAnswered} soal dijawab
-            </span>
-          )}
-          <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">
-            ·
-          </span>
-          <span className="font-semibold text-emerald-700 dark:text-emerald-400">
-            {Math.max(row.quizCorrectCount, correctTotal)} benar
-          </span>
-          {totalAnswered > 0 ? (
-            <>
-              <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">
-                ·
+        <div className="flex flex-wrap items-center gap-2.5 text-xs">
+          <div className="flex items-center gap-2 font-mono-num">
+            {row.quizInProgress && row.quizTotalQuestions > 0 ? (
+              <span className="font-semibold text-slate-700 dark:text-slate-200">
+                Soal {row.quizCurrentQuestion}/{row.quizTotalQuestions}
               </span>
-              <span className="font-semibold text-rose-700 dark:text-rose-400">
-                {wrongTotal} salah
+            ) : (
+              <span className="font-semibold text-slate-700 dark:text-slate-200">
+                {totalAnswered} soal dijawab
               </span>
-            </>
-          ) : null}
+            )}
+            <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">
+              ·
+            </span>
+            <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+              {Math.max(row.quizCorrectCount, correctTotal)} benar
+            </span>
+            {totalAnswered > 0 ? (
+              <>
+                <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">
+                  ·
+                </span>
+                <span className="font-semibold text-rose-700 dark:text-rose-400">
+                  {wrongTotal} salah
+                </span>
+              </>
+            ) : null}
+          </div>
+
+          <button
+            type="button"
+            role="switch"
+            aria-checked={showAnswerKey}
+            onClick={handleToggleAnswerKey}
+            title={
+              showAnswerKey
+                ? 'Matikan tampilan penanda jawaban benar pada jendela live ini'
+                : 'Tampilkan penanda jawaban benar pada jendela live ini'
+            }
+            className={`min-h-[30px] px-2.5 py-1 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer ${
+              showAnswerKey
+                ? 'border-emerald-300 dark:border-emerald-700/80 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100/80 dark:hover:bg-emerald-900/60'
+                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            {showAnswerKey ? (
+              <Eye className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+            ) : (
+              <EyeOff className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+            )}
+            <span>Kunci Jawaban</span>
+            <span
+              aria-hidden="true"
+              className={`relative inline-flex h-3.5 w-6 shrink-0 items-center rounded-full transition-colors ${
+                showAnswerKey
+                  ? 'bg-emerald-600 dark:bg-emerald-500'
+                  : 'bg-slate-300 dark:bg-slate-600'
+              }`}
+            >
+              <span
+                className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white shadow-xs transition-transform ${
+                  showAnswerKey ? 'translate-x-3' : 'translate-x-0.5'
+                }`}
+              />
+            </span>
+          </button>
         </div>
       </div>
 
@@ -230,8 +290,10 @@ export function LiveQuizMonitorCard({ row }: LiveQuizMonitorCardProps) {
               <span className="inline-flex items-center gap-1 font-bold text-rose-700 dark:text-rose-400">
                 <XCircle className="w-3.5 h-3.5" aria-hidden="true" />
                 <span>
-                  Salah — memilih {currentQ.chosenOption?.letter} (Kunci:{' '}
-                  {currentQ.correctOption?.letter})
+                  Salah — memilih {currentQ.chosenOption?.letter}
+                  {showAnswerKey && currentQ.correctOption
+                    ? ` (Kunci: ${currentQ.correctOption.letter})`
+                    : ''}
                 </span>
               </span>
             )}
@@ -268,7 +330,7 @@ export function LiveQuizMonitorCard({ row }: LiveQuizMonitorCardProps) {
           </div>
 
           {/* Options A-D */}
-          <QuestionChoicesGrid q={currentQ} />
+          <QuestionChoicesGrid q={currentQ} showAnswerKey={showAnswerKey} />
         </div>
       ) : row.quizInProgress ? (
         <div className="rounded-xl border border-dashed border-amber-300/80 dark:border-amber-700/60 bg-white/80 dark:bg-slate-900/75 p-4 space-y-1.5">
@@ -378,8 +440,10 @@ export function LiveQuizMonitorCard({ row }: LiveQuizMonitorCardProps) {
                         <span className="inline-flex items-center gap-1 font-bold text-rose-700 dark:text-rose-400">
                           <XCircle className="w-3.5 h-3.5" aria-hidden="true" />
                           <span>
-                            Salah · Pilih {item.chosenOption?.letter} (Kunci:{' '}
-                            {item.correctOption?.letter})
+                            Salah · Pilih {item.chosenOption?.letter}
+                            {showAnswerKey && item.correctOption
+                              ? ` (Kunci: ${item.correctOption.letter})`
+                              : ''}
                           </span>
                         </span>
                       )}
@@ -399,7 +463,7 @@ export function LiveQuizMonitorCard({ row }: LiveQuizMonitorCardProps) {
                       </div>
                     ) : null}
 
-                    <QuestionChoicesGrid q={item} compact />
+                    <QuestionChoicesGrid q={item} showAnswerKey={showAnswerKey} compact />
                   </div>
                 ))}
               </div>

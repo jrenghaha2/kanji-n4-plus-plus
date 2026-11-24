@@ -33,6 +33,8 @@ interface UserDetailModalProps {
   loading: boolean;
   error: string | null;
   nowMs: number;
+  showLiveAnswerKey: boolean;
+  onToggleLiveAnswerKey: () => void;
   onClose: () => void;
 }
 
@@ -64,6 +66,8 @@ export function UserDetailModal({
   loading,
   error,
   nowMs,
+  showLiveAnswerKey,
+  onToggleLiveAnswerKey,
   onClose,
 }: UserDetailModalProps) {
   const [datasetFilter, setDatasetFilter] = useState<'all' | QuizDatasetId>('all');
@@ -479,7 +483,11 @@ export function UserDetailModal({
               <>
                 {/* Live Quiz Real-Time Inspector (shown whenever user is actively taking or just finished a quiz) */}
                 {row.quizInProgress || row.liveQuizCurrent || row.liveQuizLog.length > 0 ? (
-                  <LiveQuizMonitorCard row={row} />
+                  <LiveQuizMonitorCard
+                    row={row}
+                    showAnswerKey={showLiveAnswerKey}
+                    onToggleAnswerKey={onToggleLiveAnswerKey}
+                  />
                 ) : null}
 
                 {/* Top KPI summary cards (matching clean dark/light dashboard aesthetic) */}

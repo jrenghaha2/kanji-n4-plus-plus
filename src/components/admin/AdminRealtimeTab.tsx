@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ArrowUpDown, ChevronDown, ChevronUp, Eye, Radio, Search } from 'lucide-react';
+import { ArrowUpDown, ChevronDown, ChevronUp, Eye, EyeOff, Radio, Search } from 'lucide-react';
 import type {
   AdminPresenceStatus,
   AdminSortOption,
@@ -18,6 +18,8 @@ import { LiveQuizMonitorCard } from './LiveQuizMonitorCard';
 interface AdminRealtimeTabProps {
   rows: readonly MonitoredUserRow[];
   nowMs: number;
+  showLiveAnswerKey: boolean;
+  onToggleLiveAnswerKey: () => void;
   onOpenDetail: (row: MonitoredUserRow) => void;
 }
 
@@ -31,7 +33,13 @@ const PRESENCE_FILTERS: readonly { key: PresenceFilter; label: string }[] = [
   { key: 'offline', label: 'Offline' },
 ];
 
-export function AdminRealtimeTab({ rows, nowMs, onOpenDetail }: AdminRealtimeTabProps) {
+export function AdminRealtimeTab({
+  rows,
+  nowMs,
+  showLiveAnswerKey,
+  onToggleLiveAnswerKey,
+  onOpenDetail,
+}: AdminRealtimeTabProps) {
   const [search, setSearch] = useState('');
   const [presenceFilter, setPresenceFilter] = useState<PresenceFilter>('all');
   const [sortBy, setSortBy] = useState<AdminSortOption>('recent');
@@ -106,30 +114,70 @@ export function AdminRealtimeTab({ rows, nowMs, onOpenDetail }: AdminRealtimeTab
           </div>
         </div>
 
-        <div
-          role="group"
-          aria-label="Filter status kehadiran"
-          className="flex flex-wrap items-center gap-1.5"
-        >
-          {PRESENCE_FILTERS.map(opt => {
-            const active = presenceFilter === opt.key;
-            return (
-              <button
-                key={opt.key}
-                type="button"
-                aria-pressed={active}
-                onClick={() => setPresenceFilter(opt.key)}
-                className={`min-h-[36px] px-3 py-1.5 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer ${
-                  active
-                    ? 'bg-slate-900 border-slate-900 text-white dark:bg-indigo-600 dark:border-indigo-500 dark:text-white'
-                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div
+            role="group"
+            aria-label="Filter status kehadiran"
+            className="flex flex-wrap items-center gap-1.5"
+          >
+            {PRESENCE_FILTERS.map(opt => {
+              const active = presenceFilter === opt.key;
+              return (
+                <button
+                  key={opt.key}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setPresenceFilter(opt.key)}
+                  className={`min-h-[36px] px-3 py-1.5 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer ${
+                    active
+                      ? 'bg-slate-900 border-slate-900 text-white dark:bg-indigo-600 dark:border-indigo-500 dark:text-white'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <span>{opt.label}</span>
+                  <span className="font-mono-num opacity-80">{counts[opt.key]}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            role="switch"
+            aria-checked={showLiveAnswerKey}
+            onClick={onToggleLiveAnswerKey}
+            title={
+              showLiveAnswerKey
+                ? 'Klik untuk menyembunyikan penanda jawaban benar pada pantauan kuis live'
+                : 'Klik untuk menampilkan penanda jawaban benar pada pantauan kuis live'
+            }
+            className={`min-h-[36px] px-3 py-1.5 rounded-lg border text-xs font-semibold inline-flex items-center gap-2 transition-colors whitespace-nowrap cursor-pointer ${
+              showLiveAnswerKey
+                ? 'border-emerald-300 dark:border-emerald-700/80 bg-emerald-50/80 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100/80 dark:hover:bg-emerald-900/50'
+                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            {showLiveAnswerKey ? (
+              <Eye className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+            ) : (
+              <EyeOff className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+            )}
+            <span>Tampilkan Kunci Live</span>
+            <span
+              aria-hidden="true"
+              className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${
+                showLiveAnswerKey
+                  ? 'bg-emerald-600 dark:bg-emerald-500'
+                  : 'bg-slate-300 dark:bg-slate-600'
+              }`}
+            >
+              <span
+                className={`inline-block h-3 w-3 transform rounded-full bg-white shadow-xs transition-transform ${
+                  showLiveAnswerKey ? 'translate-x-3.5' : 'translate-x-0.5'
                 }`}
-              >
-                <span>{opt.label}</span>
-                <span className="font-mono-num opacity-80">{counts[opt.key]}</span>
-              </button>
-            );
-          })}
+              />
+            </span>
+          </button>
         </div>
       </div>
 
@@ -333,7 +381,13 @@ export function AdminRealtimeTab({ rows, nowMs, onOpenDetail }: AdminRealtimeTab
                 </div>
                 </div>
 
-                {isLiveExpanded ? <LiveQuizMonitorCard row={row} /> : null}
+                {isLiveExpanded ? (
+                  <LiveQuizMonitorCard
+                    row={row}
+                    showAnswerKey={showLiveAnswerKey}
+                    onToggleAnswerKey={onToggleLiveAnswerKey}
+                  />
+                ) : null}
               </div>
             );
           })}

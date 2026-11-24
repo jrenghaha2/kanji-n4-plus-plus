@@ -44,6 +44,19 @@ interface AdminPanelProps {
   onUpdateRole: (row: MonitoredUserRow, nextRole: UserRole) => Promise<boolean>;
 }
 
+const LIVE_ANSWER_KEY_STORAGE_KEY = 'n4_admin_live_show_answer_key';
+
+function loadLiveAnswerKeyPreference(): boolean {
+  try {
+    const raw = localStorage.getItem(LIVE_ANSWER_KEY_STORAGE_KEY);
+    if (raw === '0' || raw === 'false') return false;
+    if (raw === '1' || raw === 'true') return true;
+  } catch {
+    // Ignore storage read errors in restricted iframe/private browsing contexts
+  }
+  return false;
+}
+
 export function AdminPanel({
   actorUid,
   actorRole,
@@ -66,6 +79,21 @@ export function AdminPanel({
   onUpdateRole,
 }: AdminPanelProps) {
   const [subTab, setSubTab] = useState<AdminPanelTab>('realtime');
+  const [showLiveAnswerKey, setShowLiveAnswerKey] = useState<boolean>(() =>
+    loadLiveAnswerKeyPreference()
+  );
+
+  const toggleLiveAnswerKey = useCallback(() => {
+    setShowLiveAnswerKey(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem(LIVE_ANSWER_KEY_STORAGE_KEY, next ? '1' : '0');
+      } catch {
+        // Ignore storage write errors
+      }
+      return next;
+    });
+  }, []);
 
   const isSuper = isSuperAdminRole(actorRole);
   const panelTitle = ROLE_META[actorRole].panelTitle || 'Panel Admin';
@@ -216,6 +244,8 @@ export function AdminPanel({
         <AdminRealtimeTab
           rows={rows}
           nowMs={nowMs}
+          showLiveAnswerKey={showLiveAnswerKey}
+          onToggleLiveAnswerKey={toggleLiveAnswerKey}
           onOpenDetail={handleOpenDetail}
         />
       ) : subTab === 'events' ? (
@@ -239,6 +269,8 @@ export function AdminPanel({
         loading={detailLoading}
         error={detailError}
         nowMs={nowMs}
+        showLiveAnswerKey={showLiveAnswerKey}
+        onToggleLiveAnswerKey={toggleLiveAnswerKey}
         onClose={onCloseUserDetail}
       />
     </section>
