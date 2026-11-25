@@ -28,7 +28,8 @@ import type { QuizLiveState } from './types/admin';
 import type {
   AppDatasetMode,
   AppTab,
-  CardStatusFilter,
+  CardStatusCategory,
+  CardStatusSelection,
   IrodoriBookId,
   IrodoriChapterFilter,
   IrodoriKanjiScope,
@@ -42,6 +43,7 @@ import {
   filterCardIndices,
   reshuffleDifferent,
   shuffleItems,
+  toggleCardStatusSelection,
 } from './utils/cardFilter';
 import {
   IRODORI_KANJI_SCOPE_META,
@@ -61,7 +63,7 @@ export default function App() {
   const [chapterFilter, setChapterFilter] = useState<IrodoriChapterFilter>('all');
   const [irodoriKanjiScope, setIrodoriKanjiScope] = useState<IrodoriKanjiScope>('all');
 
-  const [statusFilter, setStatusFilter] = useState<CardStatusFilter>('all');
+  const [selectedStatuses, setSelectedStatuses] = useState<CardStatusCategory[]>([]);
   const [shuffleOn, setShuffleOn] = useState(false);
 
   const [order, setOrder] = useState<number[]>(() => getPoolIndices('all', KANJI));
@@ -249,7 +251,7 @@ export default function App() {
       lv: LevelFilter,
       ch: IrodoriChapterFilter,
       kanjiScope: IrodoriKanjiScope,
-      stFilter: CardStatusFilter,
+      stSelection: CardStatusSelection,
       mSet: Set<string>,
       hSet: Set<string>
     ) => {
@@ -259,7 +261,7 @@ export default function App() {
           ? (item: KanjiEntry) => matchesIrodoriKanjiScope(item, kanjiScope)
           : undefined;
       const pool = getPoolIndices(lv, ds, mode === 'irodori' ? ch : undefined, entryFilter);
-      return filterCardIndices(pool, ds, stFilter, mSet, hSet);
+      return filterCardIndices(pool, ds, stSelection, mSet, hSet);
     },
     []
   );
@@ -267,7 +269,7 @@ export default function App() {
   const computeCardPool = useCallback(
     (
       lv: LevelFilter,
-      stFilter: CardStatusFilter,
+      stSelection: CardStatusSelection,
       mSet: Set<string>,
       hSet: Set<string>
     ) =>
@@ -277,7 +279,7 @@ export default function App() {
         lv,
         chapterFilter,
         irodoriKanjiScope,
-        stFilter,
+        stSelection,
         mSet,
         hSet
       ),
@@ -303,10 +305,10 @@ export default function App() {
 
   const onRestoreCommitted = useCallback(
     (nextMastered: Set<string>, nextHard: Set<string>) => {
-      const nextPool = computeCardPool(levelFilter, statusFilter, nextMastered, nextHard);
+      const nextPool = computeCardPool(levelFilter, selectedStatuses, nextMastered, nextHard);
       rebuildOrder(nextPool, shuffleOn);
     },
-    [computeCardPool, levelFilter, statusFilter, rebuildOrder, shuffleOn]
+    [computeCardPool, levelFilter, selectedStatuses, rebuildOrder, shuffleOn]
   );
 
   const {
@@ -376,7 +378,7 @@ export default function App() {
   const handleSignOut = useCallback(() => {
     void executeSignOut(() => {
       const { emptyM, emptyH } = resetCloudAndLocalProgress();
-      const nextPool = computeCardPool(levelFilter, statusFilter, emptyM, emptyH);
+      const nextPool = computeCardPool(levelFilter, selectedStatuses, emptyM, emptyH);
       rebuildOrder(nextPool, shuffleOn);
     });
   }, [
@@ -384,7 +386,7 @@ export default function App() {
     resetCloudAndLocalProgress,
     computeCardPool,
     levelFilter,
-    statusFilter,
+    selectedStatuses,
     rebuildOrder,
     shuffleOn,
   ]);
@@ -400,7 +402,7 @@ export default function App() {
       levelFilter,
       chapterFilter,
       irodoriKanjiScope,
-      statusFilter,
+      selectedStatuses,
       nextM,
       nextH
     );
@@ -415,7 +417,7 @@ export default function App() {
     levelFilter,
     chapterFilter,
     irodoriKanjiScope,
-    statusFilter,
+    selectedStatuses,
     rebuildOrder,
     shuffleOn,
   ]);
@@ -432,7 +434,7 @@ export default function App() {
         levelFilter,
         'all',
         irodoriKanjiScope,
-        statusFilter,
+        selectedStatuses,
         nextBookProgress.mastered,
         nextBookProgress.hard
       );
@@ -445,7 +447,7 @@ export default function App() {
       computeCardPoolFor,
       levelFilter,
       irodoriKanjiScope,
-      statusFilter,
+      selectedStatuses,
       rebuildOrder,
       shuffleOn,
     ]
@@ -461,7 +463,7 @@ export default function App() {
         nextLevel,
         chapterFilter,
         irodoriKanjiScope,
-        statusFilter,
+        selectedStatuses,
         mastered,
         hardSet
       );
@@ -473,7 +475,7 @@ export default function App() {
       irodoriBookId,
       chapterFilter,
       irodoriKanjiScope,
-      statusFilter,
+      selectedStatuses,
       mastered,
       hardSet,
       rebuildOrder,
@@ -491,7 +493,7 @@ export default function App() {
         levelFilter,
         nextChapter,
         irodoriKanjiScope,
-        statusFilter,
+        selectedStatuses,
         activeIrodoriProgress.mastered,
         activeIrodoriProgress.hard
       );
@@ -503,7 +505,7 @@ export default function App() {
       irodoriBookId,
       levelFilter,
       irodoriKanjiScope,
-      statusFilter,
+      selectedStatuses,
       activeIrodoriProgress,
       rebuildOrder,
       shuffleOn,
@@ -520,7 +522,7 @@ export default function App() {
         levelFilter,
         chapterFilter,
         nextScope,
-        statusFilter,
+        selectedStatuses,
         activeIrodoriProgress.mastered,
         activeIrodoriProgress.hard
       );
@@ -532,7 +534,7 @@ export default function App() {
       irodoriBookId,
       levelFilter,
       chapterFilter,
-      statusFilter,
+      selectedStatuses,
       activeIrodoriProgress,
       rebuildOrder,
       shuffleOn,
@@ -617,8 +619,8 @@ export default function App() {
     const nextM = new Set(activeMastered);
     levelIndices.forEach(i => nextM.delete(activeDataset[i].id));
     if (applyProgressChange(nextM, new Set(activeHardSet))) {
-      if (statusFilter === 'mastered' || statusFilter === 'unmastered') {
-        const nextPool = computeCardPool(levelFilter, statusFilter, nextM, activeHardSet);
+      if (selectedStatuses.length > 0) {
+        const nextPool = computeCardPool(levelFilter, selectedStatuses, nextM, activeHardSet);
         rebuildOrder(nextPool, shuffleOn);
       }
       showToast(
@@ -633,7 +635,7 @@ export default function App() {
     levelIndices,
     activeDataset,
     applyProgressChange,
-    statusFilter,
+    selectedStatuses,
     computeCardPool,
     levelFilter,
     rebuildOrder,
@@ -662,8 +664,8 @@ export default function App() {
     levelIndices.forEach(i => nextH.delete(activeDataset[i].id));
     if (applyProgressChange(new Set(activeMastered), nextH)) {
       setSessionHard(new Set());
-      if (statusFilter === 'hard') {
-        const nextPool = computeCardPool(levelFilter, statusFilter, activeMastered, nextH);
+      if (selectedStatuses.length > 0) {
+        const nextPool = computeCardPool(levelFilter, selectedStatuses, activeMastered, nextH);
         rebuildOrder(nextPool, shuffleOn);
       }
       showToast(
@@ -678,7 +680,7 @@ export default function App() {
     levelIndices,
     activeDataset,
     applyProgressChange,
-    statusFilter,
+    selectedStatuses,
     computeCardPool,
     levelFilter,
     rebuildOrder,
@@ -687,15 +689,30 @@ export default function App() {
     activeScopeLabel,
   ]);
 
-  const handleSelectStatusFilter = useCallback(
-    (nextStatus: CardStatusFilter) => {
-      if (nextStatus === statusFilter) return;
-      setStatusFilter(nextStatus);
-      const nextPool = computeCardPool(levelFilter, nextStatus, activeMastered, activeHardSet);
+  const handleSelectAllStatuses = useCallback(() => {
+    if (selectedStatuses.length === 0) return;
+    setSelectedStatuses([]);
+    const nextPool = computeCardPool(levelFilter, [], activeMastered, activeHardSet);
+    rebuildOrder(nextPool, shuffleOn);
+  }, [
+    selectedStatuses.length,
+    computeCardPool,
+    levelFilter,
+    activeMastered,
+    activeHardSet,
+    rebuildOrder,
+    shuffleOn,
+  ]);
+
+  const handleToggleStatusCategory = useCallback(
+    (category: CardStatusCategory) => {
+      const nextSelection = toggleCardStatusSelection(selectedStatuses, category);
+      setSelectedStatuses(nextSelection);
+      const nextPool = computeCardPool(levelFilter, nextSelection, activeMastered, activeHardSet);
       rebuildOrder(nextPool, shuffleOn);
     },
     [
-      statusFilter,
+      selectedStatuses,
       computeCardPool,
       levelFilter,
       activeMastered,
@@ -708,13 +725,13 @@ export default function App() {
   const handleToggleShuffle = useCallback(() => {
     const nextShuffle = !shuffleOn;
     setShuffleOn(nextShuffle);
-    const nextPool = computeCardPool(levelFilter, statusFilter, activeMastered, activeHardSet);
+    const nextPool = computeCardPool(levelFilter, selectedStatuses, activeMastered, activeHardSet);
     rebuildOrder(nextPool, nextShuffle, nextShuffle ? order : undefined);
   }, [
     shuffleOn,
     computeCardPool,
     levelFilter,
-    statusFilter,
+    selectedStatuses,
     activeMastered,
     activeHardSet,
     rebuildOrder,
@@ -722,7 +739,7 @@ export default function App() {
   ]);
 
   const handleReshuffle = useCallback(() => {
-    const nextPool = computeCardPool(levelFilter, statusFilter, activeMastered, activeHardSet);
+    const nextPool = computeCardPool(levelFilter, selectedStatuses, activeMastered, activeHardSet);
     if (!shuffleOn) {
       setShuffleOn(true);
     }
@@ -730,7 +747,7 @@ export default function App() {
   }, [
     computeCardPool,
     levelFilter,
-    statusFilter,
+    selectedStatuses,
     activeMastered,
     activeHardSet,
     shuffleOn,
@@ -739,12 +756,12 @@ export default function App() {
   ]);
 
   const handleRestartSession = useCallback(() => {
-    const nextPool = computeCardPool(levelFilter, statusFilter, activeMastered, activeHardSet);
+    const nextPool = computeCardPool(levelFilter, selectedStatuses, activeMastered, activeHardSet);
     rebuildOrder(nextPool, shuffleOn);
   }, [
     computeCardPool,
     levelFilter,
-    statusFilter,
+    selectedStatuses,
     activeMastered,
     activeHardSet,
     rebuildOrder,
@@ -903,7 +920,7 @@ export default function App() {
                   order={order}
                   pos={pos}
                   flipped={flipped}
-                  statusFilter={statusFilter}
+                  selectedStatuses={selectedStatuses}
                   statusCounts={cardStatusCounts}
                   shuffleOn={shuffleOn}
                   mastered={activeMastered}
@@ -929,7 +946,8 @@ export default function App() {
                   onResetAllLevelMastered={handleResetAllLevelMastered}
                   onUnhardCurrent={handleUnhardCurrent}
                   onClearLevelHard={handleClearLevelHard}
-                  onSelectStatusFilter={handleSelectStatusFilter}
+                  onSelectAllStatuses={handleSelectAllStatuses}
+                  onToggleStatusCategory={handleToggleStatusCategory}
                   onToggleShuffle={handleToggleShuffle}
                   onReshuffle={handleReshuffle}
                   onRestartSession={handleRestartSession}

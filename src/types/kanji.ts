@@ -1,6 +1,7 @@
 export type DifficultyLevel = 'easy' | 'medium' | 'hard';
 export type LevelFilter = 'all' | DifficultyLevel;
-export type CardStatusFilter = 'all' | 'unmastered' | 'mastered' | 'hard';
+export type CardStatusCategory = 'unmarked' | 'mastered' | 'hard';
+export type CardStatusSelection = readonly CardStatusCategory[];
 export type AppTab = 'card' | 'list' | 'quiz' | 'admin';
 export type AppDatasetMode = 'n4' | 'irodori';
 

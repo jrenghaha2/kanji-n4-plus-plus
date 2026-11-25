@@ -5,10 +5,12 @@ import {
   ADMIN_SORT_OPTIONS,
   ONLINE_THRESHOLD_MS,
   RECENT_THRESHOLD_MS,
+  applyStableUidOrder,
   computeAdminKpis,
   filterMonitoredUsers,
   getPresenceStatus,
   mergeUserMonitoringRows,
+  reconcileStableQuizOrder,
   sortMonitoredUsers,
 } from './adminMonitor';
 import {
@@ -534,5 +536,119 @@ test('liveQuizSync encodes and decodes 100% of item IDs and real buildQuizSessio
     assert.equal(decodeLiveQuizLog(log, dsId).length, snapshots.length);
   }
 });
+
+test('reconcileStableQuizOrder & applyStableUidOrder prevent active quiz takers from jumping up/down as they answer', () => {
+  const now = 1_700_000_000_000;
+  const makeQuizRow = (
+    uid: string,
+    displayName: string,
+    lastActiveMs: number,
+    quizCurrentQuestion: number,
+    quizCorrectCount: number
+  ) =>
+    mergeUserMonitoringRows(
+      [
+        {
+          uid,
+          displayName,
+          email: `${uid}@example.com`,
+          avatarUrl: '',
+          role: 'user',
+          n4MasteredCount: 10,
+          n4HardCount: 1,
+          createdAtMs: now - 100_000,
+          updatedAtMs: lastActiveMs,
+        },
+      ],
+      {
+        [uid]: {
+          uid,
+          displayName,
+          email: `${uid}@example.com`,
+          avatarUrl: '',
+          role: 'user',
+          activityType: 'quiz_running',
+          datasetMode: 'n4',
+          datasetId: 'n4',
+          moduleLabel: 'Kanji N4 · Kuis',
+          scopeLabel: 'Semua',
+          quizInProgress: true,
+          quizCurrentQuestion,
+          quizTotalQuestions: 10,
+          quizCorrectCount,
+          quizMode: 'k2m',
+          quizCurrentToken: `${quizCurrentQuestion}|k2m|n1|n1,n2,n3,n4|-1`,
+          quizLiveLog: '',
+          totalMastered: 10,
+          totalHard: 1,
+          n4Mastered: 10,
+          irodoriMastered: 0,
+          totalQuizSessions: 1,
+          lastQuizScore: 80,
+          lastQuizTotal: 10,
+          lastQuizDatasetId: 'n4',
+          updatedAtMs: lastActiveMs,
+        },
+      },
+      {},
+      now
+    )[0];
+
+  // Initial snapshot: 3 students taking a quiz (different timestamps)
+  const initialRows = [
+    makeQuizRow('u_dedi', 'Dedi', now - 1_000, 3, 2),
+    makeQuizRow('u_budi', 'Budi', now - 5_000, 1, 1),
+    makeQuizRow('u_citra', 'Citra', now - 3_000, 2, 2),
+  ];
+
+  // Initial pinned order starts alphabetically: Budi, Citra, Dedi
+  let pinned = reconcileStableQuizOrder(initialRows, []);
+  assert.deepEqual(pinned, ['u_budi', 'u_citra', 'u_dedi']);
+  assert.deepEqual(
+    applyStableUidOrder(initialRows, pinned).map(r => r.uid),
+    ['u_budi', 'u_citra', 'u_dedi']
+  );
+
+  // Dedi and Citra submit new answers so their lastActiveMs jumps ahead of Budi
+  const afterAnswersRows = [
+    makeQuizRow('u_dedi', 'Dedi', now, 5, 4),
+    makeQuizRow('u_citra', 'Citra', now - 200, 4, 3),
+    makeQuizRow('u_budi', 'Budi', now - 5_000, 1, 1),
+  ];
+  // Naive 'recent' sort would jump Dedi -> Citra -> Budi!
+  assert.deepEqual(
+    sortMonitoredUsers(afterAnswersRows, 'recent').map(r => r.uid),
+    ['u_dedi', 'u_citra', 'u_budi']
+  );
+  // Stable order keeps exact slots: Budi -> Citra -> Dedi (ZERO movement!)
+  pinned = reconcileStableQuizOrder(afterAnswersRows, pinned);
+  assert.deepEqual(pinned, ['u_budi', 'u_citra', 'u_dedi']);
+  assert.deepEqual(
+    applyStableUidOrder(afterAnswersRows, pinned).map(r => r.uid),
+    ['u_budi', 'u_citra', 'u_dedi']
+  );
+
+  // New student Andi joins mid-quiz -> appended at bottom without shifting existing cards
+  const withNewcomer = [
+    ...afterAnswersRows,
+    makeQuizRow('u_andi', 'Andi', now, 1, 0),
+  ];
+  pinned = reconcileStableQuizOrder(withNewcomer, pinned);
+  assert.deepEqual(pinned, ['u_budi', 'u_citra', 'u_dedi', 'u_andi']);
+  assert.deepEqual(
+    applyStableUidOrder(withNewcomer, pinned).map(r => r.uid),
+    ['u_budi', 'u_citra', 'u_dedi', 'u_andi']
+  );
+
+  // Citra finishes quiz and leaves -> remaining keep exact relative slots
+  const afterCitraFinishes = withNewcomer.filter(r => r.uid !== 'u_citra');
+  pinned = reconcileStableQuizOrder(afterCitraFinishes, pinned);
+  assert.deepEqual(pinned, ['u_budi', 'u_dedi', 'u_andi']);
+  assert.deepEqual(
+    applyStableUidOrder(afterCitraFinishes, pinned).map(r => r.uid),
+    ['u_budi', 'u_dedi', 'u_andi']
+  );
+});
+
 
 

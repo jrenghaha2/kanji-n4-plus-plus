@@ -1,53 +1,111 @@
-import type { CardStatusFilter, KanjiEntry } from '../types/kanji';
+import type { CardStatusCategory, CardStatusSelection, KanjiEntry } from '../types/kanji';
+
+export const ALL_CARD_STATUS_CATEGORIES: readonly CardStatusCategory[] = [
+  'unmarked',
+  'mastered',
+  'hard',
+] as const;
+
+export const CARD_STATUS_LABELS: Record<CardStatusCategory, string> = {
+  unmarked: 'Belum ditandai',
+  mastered: 'Sudah hafal',
+  hard: 'Sulit',
+};
 
 export interface CardStatusCounts {
   all: number;
-  unmastered: number;
+  unmarked: number;
   mastered: number;
   hard: number;
 }
 
-export function matchesCardStatus(
+/**
+ * Classifies an item into one of 3 strictly disjoint status buckets:
+ * - 'mastered': marked as hafal
+ * - 'hard': marked as sulit (separated from unmarked)
+ * - 'unmarked': neither mastered nor hard (belum ditandai apapun)
+ */
+export function getItemStatusCategory(
   id: string,
-  statusFilter: CardStatusFilter,
+  mastered: ReadonlySet<string>,
+  hardSet: ReadonlySet<string>
+): CardStatusCategory {
+  if (mastered.has(id)) return 'mastered';
+  if (hardSet.has(id)) return 'hard';
+  return 'unmarked';
+}
+
+/**
+ * Multi-select toggle state machine for status categories:
+ * - Empty array [] represents "Semua" (all categories).
+ * - Clicking a category while in "Semua" selects only that category.
+ * - Clicking another category adds it (multi-select).
+ * - Clicking an already-selected category removes it.
+ * - Selecting all 3 categories or deselecting the last remaining one normalizes to [] ("Semua").
+ */
+export function toggleCardStatusSelection(
+  current: CardStatusSelection,
+  category: CardStatusCategory
+): CardStatusCategory[] {
+  if (current.length === 0) {
+    return [category];
+  }
+
+  const nextSet = new Set<CardStatusCategory>(current);
+  if (nextSet.has(category)) {
+    nextSet.delete(category);
+  } else {
+    nextSet.add(category);
+  }
+
+  if (nextSet.size === 0 || nextSet.size === ALL_CARD_STATUS_CATEGORIES.length) {
+    return [];
+  }
+
+  return ALL_CARD_STATUS_CATEGORIES.filter(cat => nextSet.has(cat));
+}
+
+export function formatSelectedStatusesLabel(selectedStatuses: CardStatusSelection): string {
+  if (selectedStatuses.length === 0) return 'Semua';
+  return selectedStatuses.map(cat => CARD_STATUS_LABELS[cat]).join(' + ');
+}
+
+export function matchesCardStatuses(
+  id: string,
+  selectedStatuses: CardStatusSelection,
   mastered: ReadonlySet<string>,
   hardSet: ReadonlySet<string>
 ): boolean {
-  switch (statusFilter) {
-    case 'all':
-      return true;
-    case 'unmastered':
-      return !mastered.has(id);
-    case 'mastered':
-      return mastered.has(id);
-    case 'hard':
-      return hardSet.has(id);
-  }
+  if (selectedStatuses.length === 0) return true;
+  const cat = getItemStatusCategory(id, mastered, hardSet);
+  return selectedStatuses.includes(cat);
 }
 
 export function filterCardIndices(
   poolIndices: readonly number[],
   dataset: readonly KanjiEntry[],
-  statusFilter: CardStatusFilter,
+  selectedStatuses: CardStatusSelection,
   mastered: ReadonlySet<string>,
   hardSet: ReadonlySet<string>
 ): number[] {
-  if (statusFilter === 'all') return poolIndices.slice();
+  if (selectedStatuses.length === 0) return poolIndices.slice();
   return poolIndices.filter(idx => {
     const item = dataset[idx];
     if (!item) return false;
-    return matchesCardStatus(item.id, statusFilter, mastered, hardSet);
+    return matchesCardStatuses(item.id, selectedStatuses, mastered, hardSet);
   });
 }
 
 export function filterCardItems(
   items: readonly KanjiEntry[],
-  statusFilter: CardStatusFilter,
+  selectedStatuses: CardStatusSelection,
   mastered: ReadonlySet<string>,
   hardSet: ReadonlySet<string>
 ): KanjiEntry[] {
-  if (statusFilter === 'all') return items.slice();
-  return items.filter(item => matchesCardStatus(item.id, statusFilter, mastered, hardSet));
+  if (selectedStatuses.length === 0) return items.slice();
+  return items.filter(item =>
+    matchesCardStatuses(item.id, selectedStatuses, mastered, hardSet)
+  );
 }
 
 export function countCardStatuses(
@@ -56,21 +114,22 @@ export function countCardStatuses(
   mastered: ReadonlySet<string>,
   hardSet: ReadonlySet<string>
 ): CardStatusCounts {
+  let unmarked = 0;
   let masteredCount = 0;
   let hardCount = 0;
-  let validTotal = 0;
 
   for (const idx of poolIndices) {
     const item = dataset[idx];
     if (!item) continue;
-    validTotal++;
-    if (mastered.has(item.id)) masteredCount++;
-    if (hardSet.has(item.id)) hardCount++;
+    const cat = getItemStatusCategory(item.id, mastered, hardSet);
+    if (cat === 'mastered') masteredCount++;
+    else if (cat === 'hard') hardCount++;
+    else unmarked++;
   }
 
   return {
-    all: validTotal,
-    unmastered: validTotal - masteredCount,
+    all: unmarked + masteredCount + hardCount,
+    unmarked,
     mastered: masteredCount,
     hard: hardCount,
   };
@@ -81,17 +140,20 @@ export function countItemStatuses(
   mastered: ReadonlySet<string>,
   hardSet: ReadonlySet<string>
 ): CardStatusCounts {
+  let unmarked = 0;
   let masteredCount = 0;
   let hardCount = 0;
 
   for (const item of items) {
-    if (mastered.has(item.id)) masteredCount++;
-    if (hardSet.has(item.id)) hardCount++;
+    const cat = getItemStatusCategory(item.id, mastered, hardSet);
+    if (cat === 'mastered') masteredCount++;
+    else if (cat === 'hard') hardCount++;
+    else unmarked++;
   }
 
   return {
-    all: items.length,
-    unmastered: items.length - masteredCount,
+    all: unmarked + masteredCount + hardCount,
+    unmarked,
     mastered: masteredCount,
     hard: hardCount,
   };
@@ -166,12 +228,18 @@ export function reshuffleDifferent<T>(
 export function buildCardOrder(
   poolIndices: readonly number[],
   dataset: readonly KanjiEntry[],
-  statusFilter: CardStatusFilter,
+  selectedStatuses: CardStatusSelection,
   mastered: ReadonlySet<string>,
   hardSet: ReadonlySet<string>,
   shuffleOn: boolean,
   rng: () => number = Math.random
 ): number[] {
-  const filtered = filterCardIndices(poolIndices, dataset, statusFilter, mastered, hardSet);
+  const filtered = filterCardIndices(
+    poolIndices,
+    dataset,
+    selectedStatuses,
+    mastered,
+    hardSet
+  );
   return shuffleOn ? shuffleItems(filtered, rng) : filtered;
 }

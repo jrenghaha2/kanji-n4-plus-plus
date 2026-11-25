@@ -1,5 +1,14 @@
-import { useMemo, useState } from 'react';
-import { ArrowUpDown, ChevronDown, ChevronUp, Eye, EyeOff, Radio, Search } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  ArrowUpDown,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  EyeOff,
+  Lock,
+  Radio,
+  Search,
+} from 'lucide-react';
 import type {
   AdminPresenceStatus,
   AdminSortOption,
@@ -8,8 +17,10 @@ import type {
 import {
   ADMIN_SORT_OPTIONS,
   DATASET_SHORT_LABELS,
+  applyStableUidOrder,
   filterMonitoredUsers,
   formatRelativeTimeId,
+  reconcileStableQuizOrder,
   sortMonitoredUsers,
 } from '../../utils/adminMonitor';
 import { getRoleDisplayBadgeLabel } from '../../utils/rbac';
@@ -44,12 +55,42 @@ export function AdminRealtimeTab({
   const [presenceFilter, setPresenceFilter] = useState<PresenceFilter>('all');
   const [sortBy, setSortBy] = useState<AdminSortOption>('recent');
   const [collapsedLiveUids, setCollapsedLiveUids] = useState<Record<string, boolean>>({});
+  const [pinnedQuizUids, setPinnedQuizUids] = useState<string[]>([]);
 
   const toggleLiveInspector = (uid: string) => {
     setCollapsedLiveUids(prev => ({
       ...prev,
       [uid]: !prev[uid],
     }));
+  };
+
+  const activeQuizRows = useMemo(
+    () => rows.filter(r => r.quizInProgress),
+    [rows]
+  );
+
+  // Maintain a stable slot order for active quiz takers so answering questions
+  // never causes rows to jump up and down while admins monitor "Sedang Tes".
+  useEffect(() => {
+    setPinnedQuizUids(prev => {
+      const next = reconcileStableQuizOrder(activeQuizRows, prev);
+      if (next.length === prev.length && next.every((uid, i) => uid === prev[i])) {
+        return prev;
+      }
+      return next;
+    });
+  }, [activeQuizRows]);
+
+  const handleSelectPresenceFilter = (nextFilter: PresenceFilter) => {
+    setPresenceFilter(nextFilter);
+    if (nextFilter === 'quiz_active') {
+      // Seed clean alphabetical order on entry, then lock positions as answers stream in
+      setPinnedQuizUids(reconcileStableQuizOrder(activeQuizRows, []));
+    }
+  };
+
+  const handleResetQuizOrderAlpha = () => {
+    setPinnedQuizUids(reconcileStableQuizOrder(activeQuizRows, []));
   };
 
   const counts = useMemo(() => {
@@ -66,10 +107,21 @@ export function AdminRealtimeTab({
     return { all: rows.length, online, recent, offline, quiz_active: quizActive };
   }, [rows]);
 
+  const isQuizOrderLocked = presenceFilter === 'quiz_active' && sortBy === 'recent';
+
   const visibleRows = useMemo(() => {
     const filtered = filterMonitoredUsers(rows, { search, presenceFilter });
+    if (isQuizOrderLocked) {
+      return applyStableUidOrder(filtered, pinnedQuizUids);
+    }
     return sortMonitoredUsers(filtered, sortBy);
-  }, [rows, search, presenceFilter, sortBy]);
+  }, [rows, search, presenceFilter, sortBy, isQuizOrderLocked, pinnedQuizUids]);
+
+  const hasNewcomerOutOfAlphaOrder = useMemo(() => {
+    if (!isQuizOrderLocked || visibleRows.length <= 1) return false;
+    const alpha = sortMonitoredUsers(visibleRows, 'alpha_asc');
+    return visibleRows.some((row, idx) => row.uid !== alpha[idx]?.uid);
+  }, [isQuizOrderLocked, visibleRows]);
 
   return (
     <div className="space-y-4">
@@ -107,7 +159,10 @@ export function AdminRealtimeTab({
             >
               {ADMIN_SORT_OPTIONS.map(opt => (
                 <option key={opt.value} value={opt.value}>
-                  Urutkan: {opt.label}
+                  Urutkan:{' '}
+                  {opt.value === 'recent' && presenceFilter === 'quiz_active'
+                    ? 'Posisi Stabil (Terkunci)'
+                    : opt.label}
                 </option>
               ))}
             </select>
@@ -127,7 +182,7 @@ export function AdminRealtimeTab({
                   key={opt.key}
                   type="button"
                   aria-pressed={active}
-                  onClick={() => setPresenceFilter(opt.key)}
+                  onClick={() => handleSelectPresenceFilter(opt.key)}
                   className={`min-h-[36px] px-3 py-1.5 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer ${
                     active
                       ? 'bg-slate-900 border-slate-900 text-white dark:bg-indigo-600 dark:border-indigo-500 dark:text-white'
@@ -179,6 +234,27 @@ export function AdminRealtimeTab({
             </span>
           </button>
         </div>
+
+        {isQuizOrderLocked && visibleRows.length > 1 ? (
+          <div className="rounded-xl border border-amber-200/80 dark:border-amber-800/60 bg-amber-50/60 dark:bg-amber-950/30 px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-900 dark:text-amber-200">
+            <div className="inline-flex items-center gap-2">
+              <Lock className="w-3.5 h-3.5 shrink-0 text-amber-700 dark:text-amber-300" aria-hidden="true" />
+              <span>
+                Posisi peserta tes dikunci agar tidak naik-turun saat menjawab soal. Peserta baru
+                otomatis masuk di urutan paling bawah.
+              </span>
+            </div>
+            {hasNewcomerOutOfAlphaOrder ? (
+              <button
+                type="button"
+                onClick={handleResetQuizOrderAlpha}
+                className="px-2.5 py-1 rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 hover:bg-amber-100/70 dark:hover:bg-amber-900/50 text-amber-900 dark:text-amber-200 font-semibold transition-colors whitespace-nowrap cursor-pointer"
+              >
+                Rapikan A–Z
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {/* Rows */}

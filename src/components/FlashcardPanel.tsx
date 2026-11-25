@@ -3,9 +3,9 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
-  BookOpen,
   Check,
   CheckCircle2,
+  CircleDashed,
   Layers,
   RotateCcw,
   Shuffle,
@@ -14,8 +14,17 @@ import {
   X,
 } from 'lucide-react';
 import { KANJI, LEVELS } from '../data/kanjiData';
-import type { AppDatasetMode, CardStatusFilter, KanjiEntry, LevelFilter } from '../types/kanji';
-import type { CardStatusCounts } from '../utils/cardFilter';
+import type {
+  AppDatasetMode,
+  CardStatusCategory,
+  CardStatusSelection,
+  KanjiEntry,
+  LevelFilter,
+} from '../types/kanji';
+import {
+  type CardStatusCounts,
+  formatSelectedStatusesLabel,
+} from '../utils/cardFilter';
 import { getOutsideWhitelistKanji } from '../utils/irodoriKanjiFilter';
 import { speakJP } from '../utils/tts';
 
@@ -27,7 +36,7 @@ interface FlashcardPanelProps {
   order: number[];
   pos: number;
   flipped: boolean;
-  statusFilter: CardStatusFilter;
+  selectedStatuses: CardStatusSelection;
   statusCounts: CardStatusCounts;
   shuffleOn: boolean;
   mastered: Set<string>;
@@ -45,7 +54,8 @@ interface FlashcardPanelProps {
   onResetAllLevelMastered: () => void;
   onUnhardCurrent: () => void;
   onClearLevelHard: () => void;
-  onSelectStatusFilter: (next: CardStatusFilter) => void;
+  onSelectAllStatuses: () => void;
+  onToggleStatusCategory: (category: CardStatusCategory) => void;
   onToggleShuffle: () => void;
   onReshuffle: () => void;
   onRestartSession: () => void;
@@ -60,7 +70,7 @@ export function FlashcardPanel({
   order,
   pos,
   flipped,
-  statusFilter,
+  selectedStatuses,
   statusCounts,
   shuffleOn,
   mastered,
@@ -78,7 +88,8 @@ export function FlashcardPanel({
   onResetAllLevelMastered,
   onUnhardCurrent,
   onClearLevelHard,
-  onSelectStatusFilter,
+  onSelectAllStatuses,
+  onToggleStatusCategory,
   onToggleShuffle,
   onReshuffle,
   onRestartSession,
@@ -141,70 +152,74 @@ export function FlashcardPanel({
         ? 'Yakin? Ketuk lagi'
         : `Yakin? (level ${levelLabel}) ketuk lagi`;
 
-  const statusFilterOptions: {
-    key: CardStatusFilter;
+  const isAllStatuses = selectedStatuses.length === 0;
+  const activeFilterLabel = formatSelectedStatusesLabel(selectedStatuses);
+
+  const statusCategoryOptions: {
+    key: CardStatusCategory;
     id: string;
     label: string;
+    title: string;
     count: number;
     activeClass: string;
-    icon: typeof Layers;
+    checkClass: string;
+    icon: typeof CircleDashed;
   }[] = [
     {
-      key: 'all',
-      id: 'btnFilterAll',
-      label: 'Semua',
-      count: statusCounts.all,
+      key: 'unmarked',
+      id: 'btnFilterUnmarked',
+      label: 'Belum ditandai',
+      title: 'Belum ditandai hafal maupun sulit (bisa digabung dengan kategori lain)',
+      count: statusCounts.unmarked,
       activeClass:
-        'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-300 dark:border-indigo-700 text-indigo-800 dark:text-indigo-200',
-      icon: Layers,
-    },
-    {
-      key: 'unmastered',
-      id: 'btnFilterUnmastered',
-      label: 'Belum hafal',
-      count: statusCounts.unmastered,
-      activeClass:
-        'bg-sky-50 dark:bg-sky-950/60 border-sky-300 dark:border-sky-700 text-sky-800 dark:text-sky-200',
-      icon: BookOpen,
+        'bg-sky-50 dark:bg-sky-950/60 border-sky-400 dark:border-sky-600 text-sky-900 dark:text-sky-100',
+      checkClass: 'bg-sky-600 text-white',
+      icon: CircleDashed,
     },
     {
       key: 'mastered',
       id: 'btnFilterMastered',
       label: 'Sudah hafal',
+      title: 'Sudah ditandai hafal (bisa digabung dengan kategori lain)',
       count: statusCounts.mastered,
       activeClass:
-        'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200',
+        'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-400 dark:border-emerald-600 text-emerald-900 dark:text-emerald-100',
+      checkClass: 'bg-emerald-600 text-white',
       icon: CheckCircle2,
     },
     {
       key: 'hard',
       id: 'btnFilterHard',
       label: 'Sulit',
+      title: 'Ditandai sulit, terpisah dari belum ditandai (bisa digabung dengan kategori lain)',
       count: statusCounts.hard,
       activeClass:
-        'bg-amber-50 dark:bg-amber-950/60 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200',
+        'bg-amber-50 dark:bg-amber-950/60 border-amber-400 dark:border-amber-600 text-amber-950 dark:text-amber-100',
+      checkClass: 'bg-amber-500 text-white',
       icon: AlertTriangle,
     },
   ];
 
   const nounLabel = datasetMode === 'irodori' ? 'kosakata' : 'kanji';
   const scopeNoun = datasetMode === 'irodori' ? 'pilihan ini' : 'level ini';
+  const onlyUnmarkedSelected =
+    selectedStatuses.length === 1 && selectedStatuses[0] === 'unmarked';
 
-  const emptyMessage =
-    statusFilter === 'hard'
-      ? `Belum ada ${nounLabel} sulit di ${scopeNoun}.`
-      : statusFilter === 'mastered'
-        ? `Belum ada ${nounLabel} yang ditandai hafal di ${scopeNoun}.`
-        : statusFilter === 'unmastered'
-          ? `Semua ${nounLabel} di ${scopeNoun} sudah hafal!`
-          : 'Tidak ada kosakata yang cocok pada pilihan bab dan filter Kanji ini.';
+  const emptyMessage = isAllStatuses
+    ? 'Tidak ada kosakata yang cocok pada pilihan bab dan filter Kanji ini.'
+    : onlyUnmarkedSelected
+      ? `Semua ${nounLabel} di ${scopeNoun} sudah ditandai (hafal atau sulit)!`
+      : selectedStatuses.length === 1 && selectedStatuses[0] === 'hard'
+        ? `Belum ada ${nounLabel} sulit di ${scopeNoun}.`
+        : selectedStatuses.length === 1 && selectedStatuses[0] === 'mastered'
+          ? `Belum ada ${nounLabel} yang ditandai hafal di ${scopeNoun}.`
+          : `Belum ada ${nounLabel} pada filter ${activeFilterLabel} di ${scopeNoun}.`;
 
-  const emptyTitle =
-    statusFilter === 'unmastered'
-      ? 'Semua sudah hafal!'
-      : statusFilter === 'all'
-        ? 'Belum ada data'
-        : 'Belum ada kartu di filter ini';
+  const emptyTitle = onlyUnmarkedSelected
+    ? 'Semua sudah ditandai!'
+    : isAllStatuses
+      ? 'Belum ada data'
+      : 'Belum ada kartu di filter ini';
 
   return (
     <section aria-label="Mode Kartu Flashcard" className="space-y-4">
@@ -253,31 +268,61 @@ export function FlashcardPanel({
 
         <div
           role="group"
-          aria-label="Filter status hafalan kartu"
+          aria-label="Filter status hafalan kartu (bisa pilih lebih dari satu)"
           className="flex flex-wrap items-center gap-2"
         >
-          {statusFilterOptions.map(opt => {
+          <button
+            type="button"
+            id="btnFilterAll"
+            aria-pressed={isAllStatuses}
+            onClick={onSelectAllStatuses}
+            className={`min-h-[38px] px-3 py-1.5 rounded-xl border text-xs sm:text-sm font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-500 ${
+              isAllStatuses
+                ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-400 dark:border-indigo-600 text-indigo-800 dark:text-indigo-200'
+                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+            <span>Semua</span>
+            <span className="font-mono-num text-[11px] opacity-80">({statusCounts.all})</span>
+          </button>
+
+          {statusCategoryOptions.map(opt => {
             const Icon = opt.icon;
-            const active = statusFilter === opt.key;
+            const active = selectedStatuses.includes(opt.key);
             return (
               <button
                 key={opt.key}
                 type="button"
                 id={opt.id}
+                title={opt.title}
                 aria-pressed={active}
-                onClick={() => onSelectStatusFilter(opt.key)}
+                onClick={() => onToggleStatusCategory(opt.key)}
                 className={`min-h-[38px] px-3 py-1.5 rounded-xl border text-xs sm:text-sm font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-500 ${
                   active
                     ? opt.activeClass
                     : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                 }`}
               >
-                <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                {active ? (
+                  <span
+                    aria-hidden="true"
+                    className={`w-4 h-4 rounded-md inline-flex items-center justify-center shrink-0 ${opt.checkClass}`}
+                  >
+                    <Check className="w-3 h-3 stroke-[3]" />
+                  </span>
+                ) : (
+                  <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                )}
                 <span>{opt.label}</span>
                 <span className="font-mono-num text-[11px] opacity-80">({opt.count})</span>
               </button>
             );
           })}
+
+          <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500 select-none pl-0.5">
+            · bisa pilih lebih dari 1
+          </span>
         </div>
       </div>
 
@@ -291,7 +336,7 @@ export function FlashcardPanel({
       {isDone ? (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-8 text-center shadow-xs">
           <div className="text-4xl" aria-hidden="true">
-            {total === 0 && statusFilter !== 'unmastered' ? '📚' : '🎉'}
+            {total === 0 && !onlyUnmarkedSelected ? '📚' : '🎉'}
           </div>
           <h2 className="mt-3 text-xl font-bold text-slate-900 dark:text-slate-50">
             {total === 0 ? emptyTitle : 'Sesi selesai!'}
@@ -303,11 +348,11 @@ export function FlashcardPanel({
           </p>
 
           <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
-            {total === 0 && statusFilter !== 'all' ? (
+            {total === 0 && !isAllStatuses ? (
               <button
                 type="button"
                 id="btnShowAllCards"
-                onClick={() => onSelectStatusFilter('all')}
+                onClick={onSelectAllStatuses}
                 className="w-full sm:w-auto min-h-[44px] px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-indigo-500"
               >
                 Tampilkan semua kartu

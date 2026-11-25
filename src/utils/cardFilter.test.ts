@@ -7,9 +7,12 @@ import {
   countItemStatuses,
   filterCardIndices,
   filterCardItems,
-  matchesCardStatus,
+  formatSelectedStatusesLabel,
+  getItemStatusCategory,
+  matchesCardStatuses,
   reshuffleDifferent,
   shuffleItems,
+  toggleCardStatusSelection,
 } from './cardFilter';
 
 const SAMPLE_DATASET: KanjiEntry[] = [
@@ -32,136 +35,150 @@ function makeSeqRng(values: number[]): () => number {
   };
 }
 
-test('matchesCardStatus handles all 4 modes accurately', () => {
+test('getItemStatusCategory strictly separates unmarked, mastered, and hard', () => {
   const mastered = new Set(['n1', 'n2']);
   const hardSet = new Set(['n3', 'n5']);
 
-  assert.equal(matchesCardStatus('n1', 'all', mastered, hardSet), true);
-  assert.equal(matchesCardStatus('n1', 'mastered', mastered, hardSet), true);
-  assert.equal(matchesCardStatus('n1', 'unmastered', mastered, hardSet), false);
-  assert.equal(matchesCardStatus('n1', 'hard', mastered, hardSet), false);
+  assert.equal(getItemStatusCategory('n1', mastered, hardSet), 'mastered');
+  assert.equal(getItemStatusCategory('n3', mastered, hardSet), 'hard');
+  assert.equal(getItemStatusCategory('n4', mastered, hardSet), 'unmarked');
+  assert.equal(getItemStatusCategory('n6', mastered, hardSet), 'unmarked');
 
-  assert.equal(matchesCardStatus('n3', 'mastered', mastered, hardSet), false);
-  assert.equal(matchesCardStatus('n3', 'unmastered', mastered, hardSet), true);
-  assert.equal(matchesCardStatus('n3', 'hard', mastered, hardSet), true);
-
-  assert.equal(matchesCardStatus('n4', 'mastered', mastered, hardSet), false);
-  assert.equal(matchesCardStatus('n4', 'unmastered', mastered, hardSet), true);
-  assert.equal(matchesCardStatus('n4', 'hard', mastered, hardSet), false);
+  // Hard items are NOT classified as unmarked
+  assert.equal(matchesCardStatuses('n3', ['unmarked'], mastered, hardSet), false);
+  assert.equal(matchesCardStatuses('n3', ['hard'], mastered, hardSet), true);
+  assert.equal(matchesCardStatuses('n3', ['unmarked', 'hard'], mastered, hardSet), true);
+  assert.equal(matchesCardStatuses('n4', ['unmarked'], mastered, hardSet), true);
+  assert.equal(matchesCardStatuses('n4', ['hard'], mastered, hardSet), false);
 });
 
-test('filterCardIndices and filterCardItems return exact subsets for every status filter', () => {
-  const mastered = new Set(['n1', 'n4']);
-  const hardSet = new Set(['n2', 'n6']);
+test('toggleCardStatusSelection supports single, multi-select (2 categories), and automatic normalization to Semua', () => {
+  // From Semua ([]), clicking one selects only that category
+  assert.deepEqual(toggleCardStatusSelection([], 'unmarked'), ['unmarked']);
+  assert.deepEqual(toggleCardStatusSelection([], 'hard'), ['hard']);
+  assert.deepEqual(toggleCardStatusSelection([], 'mastered'), ['mastered']);
+
+  // Adding a second category preserves canonical order ['unmarked', 'mastered', 'hard']
+  assert.deepEqual(toggleCardStatusSelection(['hard'], 'unmarked'), ['unmarked', 'hard']);
+  assert.deepEqual(toggleCardStatusSelection(['hard'], 'mastered'), ['mastered', 'hard']);
+  assert.deepEqual(toggleCardStatusSelection(['mastered'], 'unmarked'), ['unmarked', 'mastered']);
+
+  // Adding the 3rd category normalizes back to [] (Semua)
+  assert.deepEqual(toggleCardStatusSelection(['unmarked', 'hard'], 'mastered'), []);
+
+  // Removing one of 2 leaves the other
+  assert.deepEqual(toggleCardStatusSelection(['unmarked', 'hard'], 'unmarked'), ['hard']);
+
+  // Removing the last remaining category normalizes back to [] (Semua)
+  assert.deepEqual(toggleCardStatusSelection(['hard'], 'hard'), []);
+
+  assert.equal(formatSelectedStatusesLabel([]), 'Semua');
+  assert.equal(formatSelectedStatusesLabel(['unmarked']), 'Belum ditandai');
+  assert.equal(
+    formatSelectedStatusesLabel(['unmarked', 'hard']),
+    'Belum ditandai + Sulit'
+  );
+  assert.equal(
+    formatSelectedStatusesLabel(['mastered', 'hard']),
+    'Sudah hafal + Sulit'
+  );
+});
+
+test('filterCardIndices and filterCardItems support single and multi-category combinations', () => {
+  const mastered = new Set(['n1', 'n4']); // indices 0, 3
+  const hardSet = new Set(['n2', 'n6']);  // indices 1, 5
+  // unmarked: n3, n5 -> indices 2, 4
 
   assert.deepEqual(
-    filterCardIndices(ALL_INDICES, SAMPLE_DATASET, 'all', mastered, hardSet),
+    filterCardIndices(ALL_INDICES, SAMPLE_DATASET, [], mastered, hardSet),
     [0, 1, 2, 3, 4, 5]
   );
   assert.deepEqual(
-    filterCardIndices(ALL_INDICES, SAMPLE_DATASET, 'unmastered', mastered, hardSet),
-    [1, 2, 4, 5]
+    filterCardIndices(ALL_INDICES, SAMPLE_DATASET, ['unmarked'], mastered, hardSet),
+    [2, 4]
   );
   assert.deepEqual(
-    filterCardIndices(ALL_INDICES, SAMPLE_DATASET, 'mastered', mastered, hardSet),
+    filterCardIndices(ALL_INDICES, SAMPLE_DATASET, ['mastered'], mastered, hardSet),
     [0, 3]
   );
   assert.deepEqual(
-    filterCardIndices(ALL_INDICES, SAMPLE_DATASET, 'hard', mastered, hardSet),
+    filterCardIndices(ALL_INDICES, SAMPLE_DATASET, ['hard'], mastered, hardSet),
     [1, 5]
+  );
+  // Multi-select: Belum ditandai + Sulit (all not-yet-mastered)
+  assert.deepEqual(
+    filterCardIndices(ALL_INDICES, SAMPLE_DATASET, ['unmarked', 'hard'], mastered, hardSet),
+    [1, 2, 4, 5]
+  );
+  // Multi-select: Sudah hafal + Sulit (all marked cards)
+  assert.deepEqual(
+    filterCardIndices(ALL_INDICES, SAMPLE_DATASET, ['mastered', 'hard'], mastered, hardSet),
+    [0, 1, 3, 5]
   );
 
   assert.deepEqual(
-    filterCardItems(SAMPLE_DATASET, 'mastered', mastered, hardSet).map(x => x.id),
-    ['n1', 'n4']
+    filterCardItems(SAMPLE_DATASET, ['unmarked'], mastered, hardSet).map(x => x.id),
+    ['n3', 'n5']
   );
   assert.deepEqual(
-    filterCardItems(SAMPLE_DATASET, 'unmastered', mastered, hardSet).map(x => x.id),
-    ['n2', 'n3', 'n5', 'n6']
-  );
-  assert.deepEqual(
-    filterCardItems(SAMPLE_DATASET, 'hard', mastered, hardSet).map(x => x.id),
-    ['n2', 'n6']
+    filterCardItems(SAMPLE_DATASET, ['unmarked', 'mastered'], mastered, hardSet).map(x => x.id),
+    ['n1', 'n3', 'n4', 'n5']
   );
 });
 
-test('countCardStatuses and countItemStatuses keep mastered + unmastered === all', () => {
-  const mastered = new Set(['n1', 'n2', 'n5']);
+test('countCardStatuses and countItemStatuses partition all === unmarked + mastered + hard', () => {
+  const mastered = new Set(['n1', 'n2']);
   const hardSet = new Set(['n3', 'n6']);
+  // unmarked: n4, n5 (2)
 
   const idxCounts = countCardStatuses(ALL_INDICES, SAMPLE_DATASET, mastered, hardSet);
-  assert.deepEqual(idxCounts, { all: 6, unmastered: 3, mastered: 3, hard: 2 });
-  assert.equal(idxCounts.mastered + idxCounts.unmastered, idxCounts.all);
+  assert.deepEqual(idxCounts, { all: 6, unmarked: 2, mastered: 2, hard: 2 });
+  assert.equal(idxCounts.unmarked + idxCounts.mastered + idxCounts.hard, idxCounts.all);
 
   const itemCounts = countItemStatuses(SAMPLE_DATASET, mastered, hardSet);
   assert.deepEqual(itemCounts, idxCounts);
 
   // Scoped subset (e.g., filtered by difficulty or chapter)
-  const scopedCounts = countCardStatuses([0, 1, 2], SAMPLE_DATASET, mastered, hardSet);
-  assert.deepEqual(scopedCounts, { all: 3, unmastered: 1, mastered: 2, hard: 1 });
+  const scopedCounts = countCardStatuses([0, 2, 3], SAMPLE_DATASET, mastered, hardSet);
+  assert.deepEqual(scopedCounts, { all: 3, unmarked: 1, mastered: 1, hard: 1 });
 });
 
-test('buildCardOrder supports shuffling across all 4 status filters without losing items', () => {
-  const mastered = new Set(['n1', 'n2', 'n3']);
-  const hardSet = new Set(['n4', 'n5', 'n6']);
+test('buildCardOrder supports shuffling across single and multi-category selections without losing items', () => {
+  const mastered = new Set(['n1', 'n2']);
+  const hardSet = new Set(['n3', 'n4']);
+  // unmarked: n5, n6
 
-  const orderedMastered = buildCardOrder(
+  const orderedMulti = buildCardOrder(
     ALL_INDICES,
     SAMPLE_DATASET,
-    'mastered',
+    ['unmarked', 'hard'],
     mastered,
     hardSet,
     false
   );
-  assert.deepEqual(orderedMastered, [0, 1, 2]);
+  assert.deepEqual(orderedMulti, [2, 3, 4, 5]);
 
-  const shuffledMastered = buildCardOrder(
+  const shuffledMulti = buildCardOrder(
     ALL_INDICES,
     SAMPLE_DATASET,
-    'mastered',
+    ['unmarked', 'hard'],
     mastered,
     hardSet,
     true,
-    makeSeqRng([0.1, 0.2, 0.3])
+    makeSeqRng([0.1, 0.2, 0.3, 0.4])
   );
-  assert.equal(shuffledMastered.length, 3);
-  assert.deepEqual([...shuffledMastered].sort((a, b) => a - b), [0, 1, 2]);
-  assert.notDeepEqual(shuffledMastered, [0, 1, 2]);
-
-  const shuffledUnmastered = buildCardOrder(
-    ALL_INDICES,
-    SAMPLE_DATASET,
-    'unmastered',
-    mastered,
-    hardSet,
-    true,
-    makeSeqRng([0.0, 0.0, 0.0])
-  );
-  assert.deepEqual([...shuffledUnmastered].sort((a, b) => a - b), [3, 4, 5]);
-  assert.notDeepEqual(shuffledUnmastered, [3, 4, 5]);
-
-  const shuffledHard = buildCardOrder(
-    ALL_INDICES,
-    SAMPLE_DATASET,
-    'hard',
-    mastered,
-    hardSet,
-    true,
-    makeSeqRng([0.0, 0.0, 0.0])
-  );
-  assert.deepEqual([...shuffledHard].sort((a, b) => a - b), [3, 4, 5]);
-  assert.notDeepEqual(shuffledHard, [3, 4, 5]);
+  assert.equal(shuffledMulti.length, 4);
+  assert.deepEqual([...shuffledMulti].sort((a, b) => a - b), [2, 3, 4, 5]);
+  assert.notDeepEqual(shuffledMulti, [2, 3, 4, 5]);
 });
 
 test('reshuffleDifferent guarantees visible change even on a 2-card deck', () => {
-  // RNG always returning 0.999 produces identity order in Fisher-Yates
   const identityRng = () => 0.999;
   assert.deepEqual(shuffleItems([10, 20], identityRng), [10, 20]);
 
   const reshuffled = reshuffleDifferent([10, 20], [10, 20], undefined, identityRng);
   assert.deepEqual(reshuffled, [20, 10]);
 
-  // Works with object items + key selector
   const twoItems = [SAMPLE_DATASET[0], SAMPLE_DATASET[1]];
   const reshuffledItems = reshuffleDifferent(twoItems, twoItems, item => item.id, identityRng);
   assert.deepEqual(
@@ -169,7 +186,6 @@ test('reshuffleDifferent guarantees visible change even on a 2-card deck', () =>
     ['n2', 'n1']
   );
 
-  // Single-item or empty array stays intact
   assert.deepEqual(reshuffleDifferent([42], [42]), [42]);
   assert.deepEqual(reshuffleDifferent([], []), []);
 });

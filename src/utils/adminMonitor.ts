@@ -209,20 +209,83 @@ export function sortMonitoredUsers(
       if (b.totalQuizSessions !== a.totalQuizSessions) {
         return b.totalQuizSessions - a.totalQuizSessions;
       }
-      return getDisplaySortName(a).localeCompare(getDisplaySortName(b), 'id-ID');
+      const cmp = getDisplaySortName(a).localeCompare(getDisplaySortName(b), 'id-ID');
+      return cmp !== 0 ? cmp : a.uid.localeCompare(b.uid);
     }
     if (sortBy === 'quiz_desc') {
       if (b.totalQuizSessions !== a.totalQuizSessions) {
         return b.totalQuizSessions - a.totalQuizSessions;
       }
       if (b.totalMastered !== a.totalMastered) return b.totalMastered - a.totalMastered;
-      return getDisplaySortName(a).localeCompare(getDisplaySortName(b), 'id-ID');
+      const cmp = getDisplaySortName(a).localeCompare(getDisplaySortName(b), 'id-ID');
+      return cmp !== 0 ? cmp : a.uid.localeCompare(b.uid);
     }
     // Default: 'recent' (Waktu Terbaru)
     const aTime = a.lastActiveMs ?? 0;
     const bTime = b.lastActiveMs ?? 0;
     if (bTime !== aTime) return bTime - aTime;
-    return getDisplaySortName(a).localeCompare(getDisplaySortName(b), 'id-ID');
+    const cmp = getDisplaySortName(a).localeCompare(getDisplaySortName(b), 'id-ID');
+    return cmp !== 0 ? cmp : a.uid.localeCompare(b.uid);
+  });
+  return copy;
+}
+
+/**
+ * Reconciles a pinned UID order for live quiz monitoring so active quiz takers
+ * never jump up and down as their lastActiveMs updates on every submitted answer.
+ * - Existing active UIDs keep their exact slot order.
+ * - Finished/inactive UIDs are pruned cleanly.
+ * - Newly started quiz takers are appended at the bottom (alphabetical A–Z tie-broken by uid).
+ */
+export function reconcileStableQuizOrder(
+  activeQuizRows: readonly MonitoredUserRow[],
+  previousUids: readonly string[]
+): string[] {
+  const activeMap = new Map<string, MonitoredUserRow>();
+  for (const row of activeQuizRows) {
+    activeMap.set(row.uid, row);
+  }
+
+  const kept: string[] = [];
+  const seen = new Set<string>();
+  for (const uid of previousUids) {
+    if (activeMap.has(uid) && !seen.has(uid)) {
+      kept.push(uid);
+      seen.add(uid);
+    }
+  }
+
+  const newcomers = activeQuizRows.filter(row => !seen.has(row.uid));
+  if (newcomers.length > 0) {
+    const sortedNewcomers = sortMonitoredUsers(newcomers, 'alpha_asc');
+    for (const row of sortedNewcomers) {
+      kept.push(row.uid);
+    }
+  }
+
+  return kept;
+}
+
+/**
+ * Orders rows strictly according to a pinned UID sequence (with alphabetical + uid fallback
+ * for any row not yet present in the pinned list).
+ */
+export function applyStableUidOrder(
+  rows: readonly MonitoredUserRow[],
+  orderedUids: readonly string[]
+): MonitoredUserRow[] {
+  const rank = new Map<string, number>();
+  orderedUids.forEach((uid, idx) => rank.set(uid, idx));
+
+  const copy = [...rows];
+  copy.sort((a, b) => {
+    const ra = rank.get(a.uid);
+    const rb = rank.get(b.uid);
+    if (ra !== undefined && rb !== undefined) return ra - rb;
+    if (ra !== undefined) return -1;
+    if (rb !== undefined) return 1;
+    const cmp = getDisplaySortName(a).localeCompare(getDisplaySortName(b), 'id-ID');
+    return cmp !== 0 ? cmp : a.uid.localeCompare(b.uid);
   });
   return copy;
 }
